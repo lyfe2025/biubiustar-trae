@@ -1,0 +1,16 @@
+export { default as Home } from './Home';
+export { default as Trending } from './Trending';
+export { default as Activities } from './Activities';
+export { default as Contact } from './Contact';
+export { default as About } from './About';
+export { default as Login } from './Login';
+export { default as Register } from './Register';
+export { default as Profile } from './Profile';
+export { default as NotFound } from './NotFound';
+export { default as ComingSoon } from './ComingSoon';
+export { default as CreatePost } from './CreatePost';
+export { default as PostDetail } from './PostDetail';
+export { default as UserProfile } from './UserProfile';
+export { default as Settings } from './Settings';
+export { default as Search } from './Search';
+export { default as Notifications } from './Notifications';

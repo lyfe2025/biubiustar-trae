@@ -1,0 +1,81 @@
+{
+  "nav": {
+    "home": "홈",
+    "hot": "인기",
+    "activities": "활동",
+    "contact": "연락처",
+    "about": "회사 소개",
+    "login": "로그인",
+    "register": "회원가입",
+    "profile": "프로필",
+    "logout": "로그아웃"
+  },
+  "common": {
+    "loading": "로딩 중...",
+    "error": "오류",
+    "success": "성공",
+    "cancel": "취소",
+    "confirm": "확인",
+    "save": "저장",
+    "edit": "편집",
+    "delete": "삭제",
+    "search": "검색",
+    "filter": "필터",
+    "sort": "정렬",
+    "more": "더보기",
+    "less": "접기",
+    "back": "뒤로",
+    "next": "다음",
+    "previous": "이전",
+    "submit": "제출",
+    "reset": "재설정"
+  },
+  "home": {
+    "welcome": "BiuBiuStar에 오신 것을 환영합니다",
+    "subtitle": "놀라운 콘텐츠를 발견하고 사람들과 연결하세요",
+    "featured": "추천 콘텐츠",
+    "trending": "트렌딩",
+    "latest": "최신 게시물"
+  },
+  "auth": {
+    "loginTitle": "로그인",
+    "registerTitle": "계정 만들기",
+    "email": "이메일",
+    "password": "비밀번호",
+    "confirmPassword": "비밀번호 확인",
+    "username": "사용자명",
+    "forgotPassword": "비밀번호를 잊으셨나요?",
+    "noAccount": "계정이 없으신가요?",
+    "hasAccount": "이미 계정이 있으신가요?",
+    "signUp": "회원가입",
+    "signIn": "로그인"
+  },
+  "post": {
+    "title": "제목",
+    "content": "내용",
+    "publish": "게시",
+    "draft": "임시저장",
+    "like": "좋아요",
+    "comment": "댓글",
+    "share": "공유",
+    "comments": "댓글",
+    "likes": "좋아요",
+    "views": "조회수"
+  },
+  "profile": {
+    "myProfile": "내 프로필",
+    "editProfile": "프로필 편집",
+    "myPosts": "내 게시물",
+    "followers": "팔로워",
+    "following": "팔로잉",
+    "settings": "설정"
+  },
+  "settings": {
+    "language": "언어",
+    "theme": "테마",
+    "notifications": "알림",
+    "privacy": "개인정보",
+    "account": "계정",
+    "general": "일반"
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "nav": {
+    "home": "ホーム",
+    "hot": "人気",
+    "activities": "アクティビティ",
+    "contact": "お問い合わせ",
+    "about": "会社について",
+    "login": "ログイン",
+    "register": "登録",
+    "profile": "プロフィール",
+    "logout": "ログアウト"
+  },
+  "common": {
+    "loading": "読み込み中...",
+    "error": "エラー",
+    "success": "成功",
+    "cancel": "キャンセル",
+    "confirm": "確認",
+    "save": "保存",
+    "edit": "編集",
+    "delete": "削除",
+    "search": "検索",
+    "filter": "フィルター",
+    "sort": "並び替え",
+    "more": "もっと見る",
+    "less": "閉じる",
+    "back": "戻る",
+    "next": "次へ",
+    "previous": "前へ",
+    "submit": "送信",
+    "reset": "リセット"
+  },
+  "home": {
+    "welcome": "BiuBiuStarへようこそ",
+    "subtitle": "素晴らしいコンテンツを発見し、人々とつながろう",
+    "featured": "注目のコンテンツ",
+    "trending": "トレンド",
+    "latest": "最新の投稿"
+  },
+  "auth": {
+    "loginTitle": "サインイン",
+    "registerTitle": "アカウント作成",
+    "email": "メールアドレス",
+    "password": "パスワード",
+    "confirmPassword": "パスワード確認",
+    "username": "ユーザー名",
+    "forgotPassword": "パスワードを忘れましたか？",
+    "noAccount": "アカウントをお持ちでないですか？",
+    "hasAccount": "すでにアカウントをお持ちですか？",
+    "signUp": "サインアップ",
+    "signIn": "サインイン"
+  },
+  "post": {
+    "title": "タイトル",
+    "content": "内容",
+    "publish": "公開",
+    "draft": "下書き保存",
+    "like": "いいね",
+    "comment": "コメント",
+    "share": "シェア",
+    "comments": "コメント",
+    "likes": "いいね",
+    "views": "閲覧数"
+  },
+  "profile": {
+    "myProfile": "マイプロフィール",
+    "editProfile": "プロフィール編集",
+    "myPosts": "マイ投稿",
+    "followers": "フォロワー",
+    "following": "フォロー中",
+    "settings": "設定"
+  },
+  "settings": {
+    "language": "言語",
+    "theme": "テーマ",
+    "notifications": "通知",
+    "privacy": "プライバシー",
+    "account": "アカウント",
+    "general": "一般"
+  }
+}
