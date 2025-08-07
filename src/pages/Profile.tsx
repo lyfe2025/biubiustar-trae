@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
-import { User, Settings, Camera, Lock, Mail, Calendar, FileText, Heart, BarChart3 } from 'lucide-react';
+import { User, Settings, Camera, Lock, Mail, Calendar, FileText, Heart, BarChart3, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function Profile() {
   const { t } = useTranslation();
-  const { user, updateProfile, updatePassword } = useAuth();
+  const { user, updateProfile, updatePassword, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [myPosts, setMyPosts] = useState([]);
@@ -136,6 +136,23 @@ export default function Profile() {
     }
   };
 
+  // 显示加载状态
+  if (authLoading) {
+    return (
+      <div className="min-h-screen py-8">
+        <div className="container-responsive">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+            <p className="text-lg text-gray-600 dark:text-gray-400">
+              正在加载用户信息...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 用户未登录
   if (!user) {
     return (
       <div className="min-h-screen py-8">
@@ -408,16 +425,53 @@ export default function Profile() {
                         >
                           {post.title}
                         </Link>
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          post.status === 'published' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                        }`}>
-                          {post.status === 'published' ? '已发布' : '草稿'}
-                        </span>
+                        <div className="flex items-center space-x-2">
+                          {/* 审核状态标签 */}
+                          <span className={`flex items-center px-2 py-1 text-xs rounded-full ${
+                            post.status === 'published' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                            post.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                            post.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                            'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+                          }`}>
+                            {post.status === 'published' && <CheckCircle className="w-3 h-3 mr-1" />}
+                            {post.status === 'pending' && <Clock className="w-3 h-3 mr-1" />}
+                            {post.status === 'rejected' && <XCircle className="w-3 h-3 mr-1" />}
+                            {post.status === 'draft' && <AlertCircle className="w-3 h-3 mr-1" />}
+                            {post.status === 'published' ? t('moderation.status.published') :
+                         post.status === 'pending' ? t('moderation.status.pending') :
+                         post.status === 'rejected' ? t('moderation.status.rejected') : t('moderation.status.draft')}
+                          </span>
+                        </div>
                       </div>
                       <p className="text-gray-600 dark:text-gray-300 mb-4 line-clamp-2">
                         {post.content}
                       </p>
+                      
+                      {/* 审核拒绝原因 */}
+                      {post.status === 'rejected' && post.rejection_reason && (
+                        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-4">
+                          <div className="flex items-start space-x-2">
+                            <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-1">{t('moderation.status.rejected')}</p>
+                              <p className="text-sm text-red-700 dark:text-red-300">{t('moderation.rejectionReason')}：{post.rejection_reason}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* 审核状态说明 */}
+                      {post.status === 'pending' && (
+                        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 mb-4">
+                          <div className="flex items-start space-x-2">
+                            <Clock className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-1">{t('moderation.status.pending')}</p>
+                              <p className="text-sm text-yellow-700 dark:text-yellow-300">{t('moderation.status.pendingDescription')}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
                         <div className="flex items-center space-x-4">
                           <span>{post.likes_count || 0} 赞</span>

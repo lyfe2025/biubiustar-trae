@@ -236,5 +236,108 @@
       "save": "Save Settings",
       "cancel": "Cancel"
     }
+  },
+  "moderation": {
+    "title": "Content Moderation",
+    "pending": "Pending",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "noPendingPosts": "No pending posts",
+    "batchActions": {
+      "approve": "Batch Approve",
+      "reject": "Batch Reject",
+      "cancel": "Cancel Selection",
+      "selected": "{{count}} posts selected"
+    },
+    "actions": {
+      "approve": "Approve",
+      "reject": "Reject",
+      "viewDetails": "View Details"
+    },
+    "messages": {
+      "approveSuccess": "Approved successfully",
+      "rejectSuccess": "Rejected successfully",
+      "batchApproveSuccess": "Batch approval successful",
+      "batchRejectSuccess": "Batch rejection successful"
+    },
+    "rejectionReason": {
+      "label": "Rejection Reason",
+      "placeholder": "Please enter rejection reason",
+      "required": "Rejection reason is required",
+      "prompt": "Please enter rejection reason:"
+    },
+    "stats": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "todayReviewed": "Today Reviewed"
+    },
+    "status": {
+      "published": "Published",
+      "pending": "Pending",
+      "rejected": "Rejected",
+      "draft": "Draft",
+      "pendingDescription": "Your post is waiting for admin review",
+      "approved": "Approved"
+    },
+    "history": {
+      "title": "Moderation History",
+      "reviewer": "Reviewer",
+      "action": "Action",
+      "reason": "Reason",
+      "time": "Time"
+    }
+  },
+  "contact": {
+    "title": "Contact & Cooperation",
+    "subtitle": "Get in touch with us to explore cooperation opportunities",
+    "form": {
+      "name": {
+        "label": "Name",
+        "placeholder": "Please enter your name",
+        "required": "Name is required"
+      },
+      "email": {
+        "label": "Email",
+        "placeholder": "Please enter your email address",
+        "required": "Email is required",
+        "invalid": "Please enter a valid email address"
+      },
+      "company": {
+        "label": "Company Name",
+        "placeholder": "Please enter your company name (optional)"
+      },
+      "phone": {
+        "label": "Phone Number",
+        "placeholder": "Please enter your phone number (optional)"
+      },
+      "cooperationType": {
+        "label": "Cooperation Type",
+        "placeholder": "Please select cooperation type",
+        "required": "Please select cooperation type",
+        "options": {
+          "technical": "Technical Cooperation",
+          "business": "Business Cooperation",
+          "investment": "Investment Cooperation",
+          "other": "Other"
+        }
+      },
+      "description": {
+        "label": "Detailed Requirements",
+        "placeholder": "Please describe your cooperation requirements and expectations in detail...",
+        "required": "Requirements description is required"
+      }
+    },
+    "actions": {
+      "submit": "Submit Application",
+      "submitting": "Submitting...",
+      "cancel": "Cancel",
+      "close": "Close"
+    },
+    "messages": {
+      "submitSuccess": "Submitted successfully! We will contact you soon.",
+      "submitError": "Submission failed, please try again later.",
+      "networkError": "Network error, please check your connection and try again."
+    }
   }
 }

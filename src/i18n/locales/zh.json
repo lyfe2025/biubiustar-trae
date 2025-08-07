@@ -277,5 +277,108 @@
       "save": "保存设置",
       "cancel": "取消"
     }
+  },
+  "moderation": {
+    "title": "内容审核",
+    "pending": "待审核",
+    "approved": "已通过",
+    "rejected": "已拒绝",
+    "noPendingPosts": "暂无待审核的帖子",
+    "batchActions": {
+      "approve": "批量通过",
+      "reject": "批量拒绝",
+      "cancel": "取消选择",
+      "selected": "已选择 {{count}} 个帖子"
+    },
+    "actions": {
+      "approve": "审核通过",
+      "reject": "审核拒绝",
+      "viewDetails": "查看详情"
+    },
+    "messages": {
+      "approveSuccess": "审核通过成功",
+      "rejectSuccess": "审核拒绝成功",
+      "batchApproveSuccess": "批量审核通过成功",
+      "batchRejectSuccess": "批量审核拒绝成功"
+    },
+    "rejectionReason": {
+      "label": "拒绝原因",
+      "placeholder": "请输入拒绝理由",
+      "required": "拒绝原因不能为空",
+      "prompt": "请输入拒绝理由:"
+    },
+    "stats": {
+      "pending": "待审核",
+      "approved": "已通过",
+      "rejected": "已拒绝",
+      "todayReviewed": "今日审核"
+    },
+    "status": {
+      "published": "已发布",
+      "pending": "待审核",
+      "rejected": "已拒绝",
+      "draft": "草稿",
+      "pendingDescription": "您的帖子正在等待管理员审核",
+      "approved": "已通过"
+    },
+    "history": {
+      "title": "审核历史",
+      "reviewer": "审核员",
+      "action": "操作",
+      "reason": "原因",
+      "time": "时间"
+    }
+  },
+  "contact": {
+    "title": "联系合作",
+    "subtitle": "与我们取得联系，探讨合作机会",
+    "form": {
+      "name": {
+        "label": "姓名",
+        "placeholder": "请输入您的姓名",
+        "required": "姓名不能为空"
+      },
+      "email": {
+        "label": "邮箱",
+        "placeholder": "请输入您的邮箱地址",
+        "required": "邮箱不能为空",
+        "invalid": "请输入有效的邮箱地址"
+      },
+      "company": {
+        "label": "公司名称",
+        "placeholder": "请输入您的公司名称（选填）"
+      },
+      "phone": {
+        "label": "联系电话",
+        "placeholder": "请输入您的联系电话（选填）"
+      },
+      "cooperationType": {
+        "label": "合作类型",
+        "placeholder": "请选择合作类型",
+        "required": "请选择合作类型",
+        "options": {
+          "technical": "技术合作",
+          "business": "商务合作",
+          "investment": "投资合作",
+          "other": "其他"
+        }
+      },
+      "description": {
+        "label": "详细需求描述",
+        "placeholder": "请详细描述您的合作需求和期望...",
+        "required": "需求描述不能为空"
+      }
+    },
+    "actions": {
+      "submit": "提交申请",
+      "submitting": "提交中...",
+      "cancel": "取消",
+      "close": "关闭"
+    },
+    "messages": {
+      "submitSuccess": "提交成功！我们会尽快与您联系。",
+      "submitError": "提交失败，请稍后重试。",
+      "networkError": "网络错误，请检查网络连接后重试。"
+    }
   }
 }

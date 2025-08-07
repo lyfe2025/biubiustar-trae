@@ -10,6 +10,7 @@ import {
   BarChart3,
   Settings,
   Shield,
+  ShieldCheck,
   TrendingUp,
   MessageSquare,
   Eye,
@@ -20,7 +21,17 @@ import {
   Search,
   Filter,
   Download,
-  RefreshCw
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  Clock,
+  AlertTriangle,
+  History,
+  Mail,
+  Phone,
+  Building,
+  User,
+  FileCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -48,6 +59,13 @@ interface User {
   post_count: number;
 }
 
+interface Tab {
+  id: string;
+  label: string;
+  icon: any;
+  badge?: number;
+}
+
 interface Post {
   id: string;
   content: string;
@@ -59,6 +77,13 @@ interface Post {
   like_count: number;
   comment_count: number;
   share_count: number;
+  status: 'pending' | 'published' | 'rejected';
+  reviewed_at?: string;
+  reviewed_by?: {
+    username: string;
+    display_name: string;
+  };
+  rejection_reason?: string;
 }
 
 interface Event {
@@ -76,11 +101,30 @@ interface Event {
   participant_count: number;
 }
 
-type TabType = 'dashboard' | 'users' | 'posts' | 'events' | 'settings';
+interface ContactForm {
+  id: string;
+  name: string;
+  email: string;
+  company?: string;
+  phone?: string;
+  cooperation_type: string;
+  description: string;
+  status: 'unprocessed' | 'processing' | 'completed';
+  admin_notes?: string;
+  processed_by?: {
+    username: string;
+    display_name: string;
+  };
+  processed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+type TabType = 'dashboard' | 'users' | 'posts' | 'moderation' | 'events' | 'contact' | 'settings';
 
 const Admin: React.FC = () => {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
@@ -99,8 +143,30 @@ const Admin: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
+  const [moderationStats, setModerationStats] = useState<any>(null);
+  const [selectedPosts, setSelectedPosts] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<string>('all');
+  const [contactForms, setContactForms] = useState<ContactForm[]>([]);
+  const [contactStats, setContactStats] = useState<any>(null);
+  const [filterContactStatus, setFilterContactStatus] = useState<string>('all');
+
+  // 显示加载状态
+  if (authLoading) {
+    return (
+      <div className="min-h-screen py-8">
+        <div className="container-responsive">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+            <p className="text-lg text-gray-600 dark:text-gray-400">
+              正在验证管理员权限...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // 权限检查
   if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
@@ -270,8 +336,220 @@ const Admin: React.FC = () => {
     }
   };
 
+  // 获取待审核帖子
+  const fetchPendingPosts = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/posts/pending', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPendingPosts(data.data);
+      }
+    } catch (error) {
+      console.error('获取待审核帖子失败:', error);
+      toast.error('获取待审核帖子失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 获取审核统计
+  const fetchModerationStats = async () => {
+    try {
+      const response = await fetch('/api/admin/posts/moderation-stats', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setModerationStats(data.data);
+      }
+    } catch (error) {
+      console.error('获取审核统计失败:', error);
+    }
+  };
+
+  // 获取联系表单列表
+  const fetchContactForms = async () => {
+    try {
+      setLoading(true);
+      let query = supabase
+        .from('contact_forms')
+        .select(`
+          *,
+          processed_by:users!contact_forms_processed_by_fkey(
+            username,
+            display_name
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (filterContactStatus !== 'all') {
+        query = query.eq('status', filterContactStatus);
+      }
+
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      setContactForms(data || []);
+    } catch (error) {
+      console.error('Error fetching contact forms:', error);
+      toast.error('获取联系表单失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 获取联系表单统计
+  const fetchContactStats = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contact_forms')
+        .select('status');
+      
+      if (error) throw error;
+      
+      const stats = {
+        total: data?.length || 0,
+        unprocessed: data?.filter(item => item.status === 'unprocessed').length || 0,
+        processing: data?.filter(item => item.status === 'processing').length || 0,
+        completed: data?.filter(item => item.status === 'completed').length || 0
+      };
+      
+      setContactStats(stats);
+    } catch (error) {
+      console.error('Error fetching contact stats:', error);
+      toast.error('获取联系表单统计失败');
+    }
+  };
+
+  // 审核通过
+  const approvePost = async (postId: string) => {
+    try {
+      const response = await fetch(`/api/admin/posts/${postId}/approve`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        toast.success('帖子审核通过');
+        fetchPendingPosts();
+        fetchModerationStats();
+      } else {
+        toast.error('审核操作失败');
+      }
+    } catch (error) {
+      console.error('审核通过失败:', error);
+      toast.error('审核操作失败');
+    }
+  };
+
+  // 审核拒绝
+  const rejectPost = async (postId: string, reason: string) => {
+    try {
+      const response = await fetch(`/api/admin/posts/${postId}/reject`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ reason })
+      });
+      
+      if (response.ok) {
+        toast.success('帖子已拒绝');
+        fetchPendingPosts();
+        fetchModerationStats();
+      } else {
+        toast.error('审核操作失败');
+      }
+    } catch (error) {
+      console.error('审核拒绝失败:', error);
+      toast.error('审核操作失败');
+    }
+  };
+
+  // 批量审核
+  const batchModerate = async (action: 'approve' | 'reject', reason?: string) => {
+    if (selectedPosts.length === 0) {
+      toast.error('请选择要审核的帖子');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/admin/posts/batch-moderate', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          postIds: selectedPosts,
+          action,
+          reason
+        })
+      });
+      
+      if (response.ok) {
+        toast.success(`批量${action === 'approve' ? '通过' : '拒绝'}成功`);
+        setSelectedPosts([]);
+        fetchPendingPosts();
+        fetchModerationStats();
+      } else {
+        toast.error('批量审核失败');
+      }
+    } catch (error) {
+      console.error('批量审核失败:', error);
+      toast.error('批量审核失败');
+    }
+  };
+
+  // 更新联系表单状态
+  const updateContactFormStatus = async (formId: string, status: 'unprocessed' | 'processing' | 'completed', notes?: string) => {
+    try {
+      const updateData: any = {
+        status,
+        processed_by: user?.id,
+        processed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      if (notes !== undefined) {
+        updateData.admin_notes = notes;
+      }
+
+      const { error } = await supabase
+        .from('contact_forms')
+        .update(updateData)
+        .eq('id', formId);
+
+      if (error) throw error;
+
+      toast.success('联系表单状态更新成功');
+      fetchContactForms();
+      fetchContactStats();
+    } catch (error) {
+      console.error('Error updating contact form status:', error);
+      toast.error('更新联系表单状态失败');
+    }
+  };
+
   useEffect(() => {
     fetchStats();
+    fetchModerationStats();
   }, []);
 
   useEffect(() => {
@@ -285,8 +563,16 @@ const Admin: React.FC = () => {
       case 'events':
         fetchEvents();
         break;
+      case 'moderation':
+        fetchPendingPosts();
+        fetchModerationStats();
+        break;
+      case 'contact':
+        fetchContactForms();
+        fetchContactStats();
+        break;
     }
-  }, [activeTab]);
+  }, [activeTab, searchTerm, filterRole, filterContactStatus]);
 
   // 过滤用户
   const filteredUsers = users.filter(user => {
@@ -301,9 +587,11 @@ const Admin: React.FC = () => {
     { id: 'dashboard', label: t('admin.dashboard'), icon: BarChart3 },
     { id: 'users', label: t('admin.users'), icon: Users },
     { id: 'posts', label: t('admin.posts'), icon: FileText },
+    { id: 'moderation', label: t('moderation.pending'), icon: Clock, badge: moderationStats?.pending || 0 },
     { id: 'events', label: t('admin.events'), icon: Calendar },
+    { id: 'contact', label: t('admin.contact'), icon: Mail },
     { id: 'settings', label: t('admin.settings'), icon: Settings },
-  ];
+  ];}]}
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -331,7 +619,7 @@ const Admin: React.FC = () => {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as TabType)}
-                    className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
+                    className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm relative ${
                       activeTab === tab.id
                         ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
@@ -339,6 +627,11 @@ const Admin: React.FC = () => {
                   >
                     <Icon className="h-5 w-5" />
                     <span>{tab.label}</span>
+                    {tab.badge && tab.badge > 0 && (
+                      <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] h-5 flex items-center justify-center">
+                        {tab.badge}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -706,6 +999,370 @@ const Admin: React.FC = () => {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'moderation' && (
+            <div className="p-6">
+              {/* 审核统计 */}
+              {moderationStats && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <Clock className="h-6 w-6 text-yellow-600" />
+                      <div className="ml-3">
+                        <p className="text-sm text-yellow-600 dark:text-yellow-400">{t('moderation.status.pending')}</p>
+                        <p className="text-xl font-bold text-yellow-900 dark:text-yellow-100">
+                          {moderationStats.pending}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <CheckCircle className="h-6 w-6 text-green-600" />
+                      <div className="ml-3">
+                        <p className="text-sm text-green-600 dark:text-green-400">{t('moderation.status.approved')}</p>
+                        <p className="text-xl font-bold text-green-900 dark:text-green-100">
+                          {moderationStats.approved}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <XCircle className="h-6 w-6 text-red-600" />
+                      <div className="ml-3">
+                        <p className="text-sm text-red-600 dark:text-red-400">{t('moderation.status.rejected')}</p>
+                        <p className="text-xl font-bold text-red-900 dark:text-red-100">
+                          {moderationStats.rejected}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <History className="h-6 w-6 text-blue-600" />
+                      <div className="ml-3">
+                        <p className="text-sm text-blue-600 dark:text-blue-400">{t('moderation.stats.todayReviewed')}</p>
+                        <p className="text-xl font-bold text-blue-900 dark:text-blue-100">
+                          {moderationStats.todayReviewed}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 批量操作 */}
+              {selectedPosts.length > 0 && (
+                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-blue-700 dark:text-blue-300">
+                      {t('moderation.batchActions.selected', { count: selectedPosts.length })}
+                    </span>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => batchModerate('approve')}
+                        className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                      >
+                        {t('moderation.batchActions.approve')}
+                      </button>
+                      <button
+                        onClick={() => {
+                          const reason = prompt(t('moderation.rejectionReason.prompt'));
+                          if (reason) batchModerate('reject', reason);
+                        }}
+                        className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+                      >
+                        {t('moderation.batchActions.reject')}
+                      </button>
+                      <button
+                        onClick={() => setSelectedPosts([])}
+                        className="px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-700"
+                      >
+                        {t('moderation.batchActions.cancel')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 待审核帖子列表 */}
+              <div className="space-y-4">
+                {pendingPosts.map((post) => (
+                  <div key={post.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                    <div className="flex items-start space-x-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedPosts.includes(post.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedPosts([...selectedPosts, post.id]);
+                          } else {
+                            setSelectedPosts(selectedPosts.filter(id => id !== post.id));
+                          }
+                        }}
+                        className="mt-1"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <span className="font-medium text-gray-900 dark:text-white">
+                            {post.author.display_name}
+                          </span>
+                          <span className="text-gray-500 dark:text-gray-400">
+                            @{post.author.username}
+                          </span>
+                          <span className="text-gray-500 dark:text-gray-400">·</span>
+                          <span className="text-gray-500 dark:text-gray-400">
+                            {new Date(post.created_at).toLocaleString()}
+                          </span>
+                          <span className="px-2 py-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400 text-xs rounded-full">
+                            {t('moderation.status.pending')}
+                          </span>
+                        </div>
+                        <p className="text-gray-900 dark:text-white mb-3">
+                          {post.content}
+                        </p>
+                        <div className="flex space-x-4 text-sm text-gray-500 dark:text-gray-400">
+                          <span>{post.like_count} {t('posts.likes')}</span>
+                          <span>{post.comment_count} {t('posts.comments')}</span>
+                          <span>{post.share_count} {t('posts.shares')}</span>
+                        </div>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => approvePost(post.id)}
+                          className="p-2 text-green-600 hover:text-green-900 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
+                          title={t('moderation.actions.approve')}
+                        >
+                          <CheckCircle className="h-5 w-5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            const reason = prompt(t('moderation.rejectionReason.prompt'));
+                            if (reason) rejectPost(post.id, reason);
+                          }}
+                          className="p-2 text-red-600 hover:text-red-900 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                          title={t('moderation.actions.reject')}
+                        >
+                          <XCircle className="h-5 w-5" />
+                        </button>
+                        <button
+                          className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                          title={t('moderation.actions.viewDetails')}
+                        >
+                          <Eye className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {pendingPosts.length === 0 && (
+                  <div className="text-center py-8">
+                    <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                    <p className="text-gray-500 dark:text-gray-400">{t('moderation.noPendingPosts')}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'contact' && (
+            <div className="p-6">
+              {/* 联系表单统计 */}
+              {contactStats && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <Mail className="h-6 w-6 text-blue-600" />
+                      <div className="ml-3">
+                        <p className="text-sm text-blue-600 dark:text-blue-400">总表单数</p>
+                        <p className="text-xl font-bold text-blue-900 dark:text-blue-100">
+                          {contactStats.total}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <Clock className="h-6 w-6 text-yellow-600" />
+                      <div className="ml-3">
+                        <p className="text-sm text-yellow-600 dark:text-yellow-400">待处理</p>
+                        <p className="text-xl font-bold text-yellow-900 dark:text-yellow-100">
+                          {contactStats.unprocessed}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <AlertTriangle className="h-6 w-6 text-orange-600" />
+                      <div className="ml-3">
+                        <p className="text-sm text-orange-600 dark:text-orange-400">处理中</p>
+                        <p className="text-xl font-bold text-orange-900 dark:text-orange-100">
+                          {contactStats.processing}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <CheckCircle className="h-6 w-6 text-green-600" />
+                      <div className="ml-3">
+                        <p className="text-sm text-green-600 dark:text-green-400">已完成</p>
+                        <p className="text-xl font-bold text-green-900 dark:text-green-100">
+                          {contactStats.completed}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 筛选器 */}
+              <div className="mb-6 flex flex-wrap gap-4">
+                <div className="flex items-center space-x-2">
+                  <Filter className="h-4 w-4 text-gray-500" />
+                  <select
+                    value={filterContactStatus}
+                    onChange={(e) => setFilterContactStatus(e.target.value)}
+                    className="border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  >
+                    <option value="all">所有状态</option>
+                    <option value="unprocessed">待处理</option>
+                    <option value="processing">处理中</option>
+                    <option value="completed">已完成</option>
+                  </select>
+                </div>
+                <button
+                  onClick={() => {
+                    fetchContactForms();
+                    fetchContactStats();
+                  }}
+                  className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  <span>刷新</span>
+                </button>
+              </div>
+
+              {/* 联系表单列表 */}
+              <div className="space-y-4">
+                {contactForms.map((form) => (
+                  <div key={form.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <div className="flex items-center space-x-2">
+                            <User className="h-4 w-4 text-gray-500" />
+                            <span className="font-medium text-gray-900 dark:text-white">
+                              {form.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Mail className="h-4 w-4 text-gray-500" />
+                            <span className="text-gray-600 dark:text-gray-400">
+                              {form.email}
+                            </span>
+                          </div>
+                          {form.company && (
+                            <div className="flex items-center space-x-2">
+                              <Building className="h-4 w-4 text-gray-500" />
+                              <span className="text-gray-600 dark:text-gray-400">
+                                {form.company}
+                              </span>
+                            </div>
+                          )}
+                          {form.phone && (
+                            <div className="flex items-center space-x-2">
+                              <Phone className="h-4 w-4 text-gray-500" />
+                              <span className="text-gray-600 dark:text-gray-400">
+                                {form.phone}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400 mb-3">
+                          <span>合作类型: {form.cooperation_type}</span>
+                          <span>·</span>
+                          <span>提交时间: {new Date(form.created_at).toLocaleString()}</span>
+                        </div>
+                        <div className="mb-4">
+                          <p className="text-gray-900 dark:text-white">
+                            {form.description}
+                          </p>
+                        </div>
+                        {form.admin_notes && (
+                          <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">管理员备注:</p>
+                            <p className="text-gray-900 dark:text-white">{form.admin_notes}</p>
+                          </div>
+                        )}
+                        {form.processed_by && (
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            处理人: {form.processed_by.display_name} · 
+                            处理时间: {form.processed_at ? new Date(form.processed_at).toLocaleString() : ''}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <span className={`px-3 py-1 text-xs rounded-full ${
+                          form.status === 'unprocessed' 
+                            ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                            : form.status === 'processing'
+                            ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400'
+                            : 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                        }`}>
+                          {form.status === 'unprocessed' ? '待处理' : 
+                           form.status === 'processing' ? '处理中' : '已完成'}
+                        </span>
+                        <div className="flex space-x-2">
+                          {form.status !== 'processing' && (
+                            <button
+                              onClick={() => updateContactFormStatus(form.id, 'processing')}
+                              className="p-2 text-orange-600 hover:text-orange-900 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded"
+                              title="标记为处理中"
+                            >
+                              <AlertTriangle className="h-4 w-4" />
+                            </button>
+                          )}
+                          {form.status !== 'completed' && (
+                            <button
+                              onClick={() => {
+                                const notes = prompt('请输入处理备注（可选）:');
+                                updateContactFormStatus(form.id, 'completed', notes || undefined);
+                              }}
+                              className="p-2 text-green-600 hover:text-green-900 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
+                              title="标记为已完成"
+                            >
+                              <FileCheck className="h-4 w-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              const notes = prompt('请输入备注:', form.admin_notes || '');
+                              if (notes !== null) {
+                                updateContactFormStatus(form.id, form.status, notes);
+                              }
+                            }}
+                            className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                            title="编辑备注"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {contactForms.length === 0 && (
+                  <div className="text-center py-8">
+                    <Mail className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500 dark:text-gray-400">暂无联系表单</p>
+                  </div>
+                )}
               </div>
             </div>
           )}

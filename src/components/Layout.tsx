@@ -5,6 +5,7 @@ import { Menu, X, Globe, Sun, Moon, User, LogOut, Settings, Plus, Shield } from 
 import { useState } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
+import ContactModal from './ContactModal';
 
 interface LayoutProps {
   children: ReactNode;
@@ -19,17 +20,20 @@ export default function Layout({ children }: LayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
 
   const navigation = [
     { name: t('nav.home'), href: '/' },
     { name: t('nav.hot'), href: '/hot' },
     { name: t('nav.activities'), href: '/activities' },
-    { name: t('nav.contact'), href: '/contact' },
+    { name: t('nav.contact'), href: '/contact', isModal: true },
     { name: t('nav.about'), href: '/about' },
   ];
 
   const languages = [
+    { code: 'vi', name: 'Tiếng Việt' },
     { code: 'zh', name: '中文' },
+    { code: 'zh-tw', name: '繁體中文' },
     { code: 'en', name: 'English' },
     { code: 'ja', name: '日本語' },
     { code: 'ko', name: '한국어' },
@@ -42,6 +46,10 @@ export default function Layout({ children }: LayoutProps) {
 
   const isActivePath = (path: string) => {
     return location.pathname === path;
+  };
+
+  const handleContactClick = () => {
+    setIsContactModalOpen(true);
   };
 
   const handleSignOut = async () => {

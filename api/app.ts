@@ -13,6 +13,7 @@ import usersRoutes from './routes/users.js';
 import postsRoutes from './routes/posts.js';
 import eventsRoutes from './routes/events.js';
 import adminRoutes from './routes/admin.js';
+import contactRoutes from './routes/contact.js';
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url);
@@ -64,6 +65,7 @@ app.use('/api/users', usersRoutes);
 app.use('/api/posts', postsRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/contact', contactRoutes);
 // TODO: 添加更多路由
 // app.use('/api/comments', commentsRoutes);
 // app.use('/api/upload', uploadRoutes);
@@ -82,6 +84,7 @@ app.get('/', (req: Request, res: Response): void => {
       posts: '/api/posts',
       events: '/api/events',
       admin: '/api/admin',
+      contact: '/api/contact',
       health: '/api/health'
     },
     documentation: 'https://github.com/your-repo/biubiustar-api',

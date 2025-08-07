@@ -145,7 +145,9 @@ const Settings: React.FC = () => {
         </h3>
         <div className="space-y-2">
           {[
+            { code: 'vi', name: 'Tiếng Việt' },
             { code: 'zh', name: '中文' },
+            { code: 'zh-tw', name: '繁體中文' },
             { code: 'en', name: 'English' },
             { code: 'ja', name: '日本語' },
             { code: 'ko', name: '한국어' }

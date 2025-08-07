@@ -191,6 +191,7 @@ router.get('/posts', async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const search = req.query.search as string;
+    const status = req.query.status as string; // 添加状态过滤
     const offset = (page - 1) * limit;
 
     let query = supabase
@@ -202,12 +203,22 @@ router.get('/posts', async (req: Request, res: Response) => {
           username,
           display_name,
           avatar_url
+        ),
+        reviewed_by_user:users!posts_reviewed_by_fkey(
+          id,
+          username,
+          display_name
         )
       `, { count: 'exact' });
 
     // 搜索过滤
     if (search) {
       query = query.ilike('content', `%${search}%`);
+    }
+
+    // 状态过滤
+    if (status && ['pending', 'published', 'rejected', 'draft', 'archived'].includes(status)) {
+      query = query.eq('status', status);
     }
 
     const { data: posts, error, count } = await query
@@ -236,6 +247,429 @@ router.get('/posts', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('获取帖子列表失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器内部错误',
+    });
+  }
+});
+
+// 帖子审核 - 获取待审核帖子列表
+router.get('/posts/pending', async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const search = req.query.search as string;
+    const offset = (page - 1) * limit;
+
+    let query = supabase
+      .from('posts')
+      .select(`
+        *,
+        users!posts_user_id_fkey(
+          id,
+          username,
+          display_name,
+          avatar_url
+        )
+      `, { count: 'exact' })
+      .eq('status', 'pending');
+
+    // 搜索过滤
+    if (search) {
+      query = query.ilike('content', `%${search}%`);
+    }
+
+    const { data: posts, error, count } = await query
+      .order('created_at', { ascending: true }) // 按创建时间升序，优先处理早期提交的
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      console.error('获取待审核帖子失败:', error);
+      return res.status(500).json({
+        success: false,
+        message: '获取待审核帖子失败',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        posts,
+        pagination: {
+          page,
+          limit,
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limit)
+        }
+      },
+    });
+  } catch (error) {
+    console.error('获取待审核帖子失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器内部错误',
+    });
+  }
+});
+
+// 帖子审核 - 审核通过
+router.post('/posts/:id/approve', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user?.id;
+
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: '未授权的操作',
+      });
+    }
+
+    // 开始事务
+    const { data: post, error: updateError } = await supabase
+      .from('posts')
+      .update({
+        status: 'published',
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: adminId,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .eq('status', 'pending') // 确保只能审核待审核的帖子
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('审核通过失败:', updateError);
+      return res.status(500).json({
+        success: false,
+        message: '审核通过失败',
+      });
+    }
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: '帖子不存在或已被审核',
+      });
+    }
+
+    // 记录审核历史
+    const { error: historyError } = await supabase
+      .from('post_moderation_history')
+      .insert({
+        post_id: id,
+        admin_id: adminId,
+        action: 'approved',
+        previous_status: 'pending',
+        new_status: 'published',
+        created_at: new Date().toISOString()
+      });
+
+    if (historyError) {
+      console.error('记录审核历史失败:', historyError);
+      // 不影响主要操作，只记录错误
+    }
+
+    res.json({
+      success: true,
+      data: post,
+      message: '帖子审核通过',
+    });
+  } catch (error) {
+    console.error('审核通过失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器内部错误',
+    });
+  }
+});
+
+// 帖子审核 - 审核拒绝
+router.post('/posts/:id/reject', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const adminId = req.user?.id;
+
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: '未授权的操作',
+      });
+    }
+
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '拒绝原因不能为空',
+      });
+    }
+
+    // 更新帖子状态
+    const { data: post, error: updateError } = await supabase
+      .from('posts')
+      .update({
+        status: 'rejected',
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: adminId,
+        rejection_reason: reason.trim(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .eq('status', 'pending') // 确保只能审核待审核的帖子
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('审核拒绝失败:', updateError);
+      return res.status(500).json({
+        success: false,
+        message: '审核拒绝失败',
+      });
+    }
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: '帖子不存在或已被审核',
+      });
+    }
+
+    // 记录审核历史
+    const { error: historyError } = await supabase
+      .from('post_moderation_history')
+      .insert({
+        post_id: id,
+        admin_id: adminId,
+        action: 'rejected',
+        previous_status: 'pending',
+        new_status: 'rejected',
+        reason: reason.trim(),
+        created_at: new Date().toISOString()
+      });
+
+    if (historyError) {
+      console.error('记录审核历史失败:', historyError);
+      // 不影响主要操作，只记录错误
+    }
+
+    res.json({
+      success: true,
+      data: post,
+      message: '帖子审核拒绝',
+    });
+  } catch (error) {
+    console.error('审核拒绝失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器内部错误',
+    });
+  }
+});
+
+// 帖子审核 - 批量审核
+router.post('/posts/batch-moderate', async (req: Request, res: Response) => {
+  try {
+    const { postIds, action, reason } = req.body;
+    const adminId = req.user?.id;
+
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: '未授权的操作',
+      });
+    }
+
+    if (!Array.isArray(postIds) || postIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '请选择要审核的帖子',
+      });
+    }
+
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: '无效的审核操作',
+      });
+    }
+
+    if (action === 'reject' && (!reason || reason.trim().length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: '批量拒绝时必须提供拒绝原因',
+      });
+    }
+
+    const updateData: any = {
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: adminId,
+      updated_at: new Date().toISOString()
+    };
+
+    if (action === 'approve') {
+      updateData.status = 'published';
+    } else {
+      updateData.status = 'rejected';
+      updateData.rejection_reason = reason.trim();
+    }
+
+    // 批量更新帖子状态
+    const { data: posts, error: updateError } = await supabase
+      .from('posts')
+      .update(updateData)
+      .in('id', postIds)
+      .eq('status', 'pending') // 确保只能审核待审核的帖子
+      .select();
+
+    if (updateError) {
+      console.error('批量审核失败:', updateError);
+      return res.status(500).json({
+        success: false,
+        message: '批量审核失败',
+      });
+    }
+
+    // 记录审核历史
+    const historyRecords = posts?.map(post => ({
+      post_id: post.id,
+      admin_id: adminId,
+      action: action === 'approve' ? 'approved' : 'rejected',
+      previous_status: 'pending',
+      new_status: action === 'approve' ? 'published' : 'rejected',
+      reason: action === 'reject' ? reason.trim() : undefined,
+      created_at: new Date().toISOString()
+    })) || [];
+
+    if (historyRecords.length > 0) {
+      const { error: historyError } = await supabase
+        .from('post_moderation_history')
+        .insert(historyRecords);
+
+      if (historyError) {
+        console.error('记录批量审核历史失败:', historyError);
+        // 不影响主要操作，只记录错误
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        processedCount: posts?.length || 0,
+        posts
+      },
+      message: `成功${action === 'approve' ? '通过' : '拒绝'}了 ${posts?.length || 0} 个帖子`,
+    });
+  } catch (error) {
+    console.error('批量审核失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器内部错误',
+    });
+  }
+});
+
+// 帖子审核 - 获取审核历史
+router.get('/posts/:id/moderation-history', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { data: history, error } = await supabase
+      .from('post_moderation_history')
+      .select(`
+        *,
+        admin:users!post_moderation_history_admin_id_fkey(
+          id,
+          username,
+          display_name
+        )
+      `)
+      .eq('post_id', id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('获取审核历史失败:', error);
+      return res.status(500).json({
+        success: false,
+        message: '获取审核历史失败',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: history || [],
+    });
+  } catch (error) {
+    console.error('获取审核历史失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器内部错误',
+    });
+  }
+});
+
+// 帖子审核 - 获取审核统计
+router.get('/posts/moderation-stats', async (req: Request, res: Response) => {
+  try {
+    // 获取各状态的帖子数量
+    const { data: stats, error } = await supabase
+      .from('posts')
+      .select('status')
+      .not('status', 'is', null);
+
+    if (error) {
+      console.error('获取审核统计失败:', error);
+      return res.status(500).json({
+        success: false,
+        message: '获取审核统计失败',
+      });
+    }
+
+    // 统计各状态数量
+    const statusCounts = {
+      pending: 0,
+      published: 0,
+      rejected: 0,
+      draft: 0,
+      archived: 0
+    };
+
+    stats?.forEach(post => {
+      if (statusCounts.hasOwnProperty(post.status)) {
+        statusCounts[post.status as keyof typeof statusCounts]++;
+      }
+    });
+
+    // 获取今日审核数量
+    const today = new Date().toISOString().split('T')[0];
+    const { data: todayModerated, error: todayError } = await supabase
+      .from('post_moderation_history')
+      .select('action')
+      .gte('created_at', `${today}T00:00:00.000Z`)
+      .lt('created_at', `${today}T23:59:59.999Z`);
+
+    const todayStats = {
+      approved: 0,
+      rejected: 0
+    };
+
+    todayModerated?.forEach(record => {
+      if (record.action === 'approved') todayStats.approved++;
+      if (record.action === 'rejected') todayStats.rejected++;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        statusCounts,
+        todayStats,
+        total: stats?.length || 0
+      },
+    });
+  } catch (error) {
+    console.error('获取审核统计失败:', error);
     res.status(500).json({
       success: false,
       message: '服务器内部错误',

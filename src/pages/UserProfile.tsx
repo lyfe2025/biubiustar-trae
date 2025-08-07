@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
-import { Heart, MessageCircle, Share2, Calendar, MapPin, Link as LinkIcon, UserPlus, UserMinus, Settings } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Calendar, MapPin, Link as LinkIcon, UserPlus, UserMinus, Settings, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface UserData {
@@ -32,6 +32,8 @@ interface PostData {
   likeCount: number;
   commentCount: number;
   isLiked: boolean;
+  status?: 'published' | 'pending' | 'rejected' | 'draft';
+  rejection_reason?: string;
 }
 
 export default function UserProfile() {
@@ -405,16 +407,65 @@ export default function UserProfile() {
                   <div className="space-y-6">
                     {posts.map((post) => (
                       <article key={post.id} className="border-b border-gray-200 dark:border-gray-700 pb-6 last:border-b-0">
-                        <Link to={`/post/${post.id}`} className="block hover:opacity-80 transition-opacity">
-                          {post.title && (
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 hover:text-primary-600 dark:hover:text-primary-400">
-                              {post.title}
-                            </h3>
+                        <div className="flex justify-between items-start mb-3">
+                          <Link to={`/post/${post.id}`} className="flex-1 hover:opacity-80 transition-opacity">
+                            {post.title && (
+                              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 hover:text-primary-600 dark:hover:text-primary-400">
+                                {post.title}
+                              </h3>
+                            )}
+                          </Link>
+                          
+                          {/* 审核状态标签 - 只有当前用户查看自己的帖子时才显示 */}
+                          {isOwnProfile && post.status && (
+                            <span className={`flex items-center px-2 py-1 text-xs rounded-full ml-3 ${
+                              post.status === 'published' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                              post.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                              post.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                              'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+                            }`}>
+                              {post.status === 'published' && <CheckCircle className="w-3 h-3 mr-1" />}
+                              {post.status === 'pending' && <Clock className="w-3 h-3 mr-1" />}
+                              {post.status === 'rejected' && <XCircle className="w-3 h-3 mr-1" />}
+                              {post.status === 'draft' && <AlertCircle className="w-3 h-3 mr-1" />}
+                              {post.status === 'published' ? t('moderation.status.published') :
+                               post.status === 'pending' ? t('moderation.status.pending') :
+                               post.status === 'rejected' ? t('moderation.status.rejected') : t('moderation.status.draft')}
+                            </span>
                           )}
+                        </div>
+                        
+                        <Link to={`/post/${post.id}`} className="block hover:opacity-80 transition-opacity">
                           <p className="text-gray-700 dark:text-gray-300 mb-3 line-clamp-3">
                             {post.content}
                           </p>
                         </Link>
+                        
+                        {/* 审核拒绝原因 - 只有当前用户查看自己的帖子时才显示 */}
+                        {isOwnProfile && post.status === 'rejected' && post.rejection_reason && (
+                          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-4">
+                            <div className="flex items-start space-x-2">
+                              <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-1">{t('moderation.rejectionReason')}</p>
+                                <p className="text-sm text-red-700 dark:text-red-300">{post.rejection_reason}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* 审核状态说明 - 只有当前用户查看自己的帖子时才显示 */}
+                        {isOwnProfile && post.status === 'pending' && (
+                          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 mb-4">
+                            <div className="flex items-start space-x-2">
+                              <Clock className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-1">{t('moderation.status.pending')}</p>
+                                <p className="text-sm text-yellow-700 dark:text-yellow-300">{t('moderation.status.pendingDescription')}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {/* 图片预览 */}
                         {post.image_urls && post.image_urls.length > 0 && (
