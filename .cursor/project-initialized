@@ -1,0 +1,32 @@
+BiuBiuStar项目专用规则文件生成完成
+
+生成时间: 2024-12-18
+项目类型: React + TypeScript + Express + Supabase 全栈社交平台
+技术栈版本:
+- React: 18.3.1
+- TypeScript: 5.8.3  
+- Vite: 6.3.5
+- Express: 4.21.2
+- Supabase: 2.53.0
+
+已生成的专用规则文件:
+1. react-v18-typescript-v5-standards.mdc - React+TypeScript前端开发规范
+2. express-v4-nodejs-v20-standards.mdc - Express+Node.js后端开发规范  
+3. supabase-v2-database-standards.mdc - Supabase数据库开发规范
+4. fullstack-social-platform-standards.mdc - 全栈项目架构规范
+5. security-compliance-standards.mdc - 安全合规开发规范
+
+规则文件特点:
+- P0级强制执行规则：必须100%遵循
+- P1级推荐规则：建议90%以上遵循
+- 包含完整代码示例和最佳实践
+- 覆盖安全、性能、可维护性等多个维度
+- 针对社交平台特定需求定制
+
+应用策略:
+- 应用模式: Apply Intelligently (智能应用)
+- 触发机制: 基于关键词和上下文自动检测相关规则
+- 优化目标: 在保证代码质量的同时提升开发效率
+
+使用说明:
+这些专用规则文件将根据开发上下文智能应用，AI会根据当前任务类型、关键词匹配等因素自动选择合适的规则文件，确保代码质量和项目一致性。

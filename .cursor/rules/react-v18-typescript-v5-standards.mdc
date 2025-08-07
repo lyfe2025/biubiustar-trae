@@ -1,5 +1,7 @@
 ---
-alwaysApply: false
+alwaysApply: intelligently
+description: React 18 + TypeScript 5.8 前端开发专用规范，包含组件架构、类型安全、性能优化、UI/UX标准。适用于React组件开发、状态管理、前端性能优化等场景。
+triggerWords: ["react", "component", "tsx", "jsx", "useState", "useEffect", "props", "typescript", "frontend", "ui", "vite"]
 ---
 ## ⚡ 性能优化规则（P1级）
 

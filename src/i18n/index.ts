@@ -6,8 +6,6 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 import en from './locales/en.json';
 import zh from './locales/zh.json';
 import zhTw from './locales/zh-tw.json';
-import ja from './locales/ja.json';
-import ko from './locales/ko.json';
 import vi from './locales/vi.json';
 
 const resources = {
@@ -22,12 +20,6 @@ const resources = {
   },
   'zh-tw': {
     translation: zhTw,
-  },
-  ja: {
-    translation: ja,
-  },
-  ko: {
-    translation: ko,
   },
 };
 

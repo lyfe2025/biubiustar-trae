@@ -1,10 +1,5 @@
 ---
 alwaysApply: false
-conditions:
-  - involves_code_changes
-  - involves_refactoring
-  - code_quality_review
-  - duplicate_code_detected
 ---
 # 代码质量 - DRY 原则专用规则
 

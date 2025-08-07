@@ -5,7 +5,7 @@ import { Menu, X, Globe, Sun, Moon, User, LogOut, Settings, Plus, Shield } from 
 import { useState } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
-import ContactModal from './ContactModal';
+
 
 interface LayoutProps {
   children: ReactNode;
@@ -20,14 +20,13 @@ export default function Layout({ children }: LayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
 
   const navigation = [
     { name: t('nav.home'), href: '/' },
-    { name: t('nav.hot'), href: '/hot' },
+    { name: t('nav.hot'), href: '/trending' },
     { name: t('nav.activities'), href: '/activities' },
-    { name: t('nav.contact'), href: '/contact', isModal: true },
-    { name: t('nav.about'), href: '/about' },
+    { name: '联系我们', href: '/about#contact' },
+    { name: '关于公司', href: '/about' },
   ];
 
   const languages = [
@@ -35,8 +34,6 @@ export default function Layout({ children }: LayoutProps) {
     { code: 'zh', name: '中文' },
     { code: 'zh-tw', name: '繁體中文' },
     { code: 'en', name: 'English' },
-    { code: 'ja', name: '日本語' },
-    { code: 'ko', name: '한국어' },
   ];
 
   const changeLanguage = (langCode: string) => {
@@ -46,10 +43,6 @@ export default function Layout({ children }: LayoutProps) {
 
   const isActivePath = (path: string) => {
     return location.pathname === path;
-  };
-
-  const handleContactClick = () => {
-    setIsContactModalOpen(true);
   };
 
   const handleSignOut = async () => {
@@ -90,32 +83,19 @@ export default function Layout({ children }: LayoutProps) {
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex space-x-8">
-              {navigation.map((item) => {
-                if (item.isModal) {
-                  return (
-                    <button
-                      key={item.href}
-                      onClick={handleContactClick}
-                      className="px-3 py-2 rounded-md text-sm font-medium transition-colors text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400"
-                    >
-                      {item.name}
-                    </button>
-                  );
-                }
-                return (
-                  <Link
-                    key={item.href}
-                    to={item.href}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActivePath(item.href)
-                        ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/20'
-                        : 'text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400'
-                    }`}
-                  >
-                    {item.name}
-                  </Link>
-                );
-              })}
+              {navigation.map((item) => (
+                <Link
+                  key={item.href}
+                  to={item.href}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    isActivePath(item.href)
+                      ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/20'
+                      : 'text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400'
+                  }`}
+                >
+                  {item.name}
+                </Link>
+              ))}
               
               {/* Create Post Button */}
               {user && (
@@ -265,36 +245,20 @@ export default function Layout({ children }: LayoutProps) {
           {isMobileMenuOpen && (
             <div className="md:hidden py-4 border-t border-gray-200 dark:border-gray-700">
               <div className="space-y-2">
-                {navigation.map((item) => {
-                  if (item.isModal) {
-                    return (
-                      <button
-                        key={item.href}
-                        onClick={() => {
-                          handleContactClick();
-                          setIsMobileMenuOpen(false);
-                        }}
-                        className="block w-full text-left px-3 py-2 rounded-md text-base font-medium transition-colors text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400"
-                      >
-                        {item.name}
-                      </button>
-                    );
-                  }
-                  return (
-                    <Link
-                      key={item.href}
-                      to={item.href}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className={`block px-3 py-2 rounded-md text-base font-medium transition-colors ${
-                        isActivePath(item.href)
-                          ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/20'
-                          : 'text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400'
-                      }`}
-                    >
-                      {item.name}
-                    </Link>
-                  );
-                })}
+                {navigation.map((item) => (
+                  <Link
+                    key={item.href}
+                    to={item.href}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`block px-3 py-2 rounded-md text-base font-medium transition-colors ${
+                      isActivePath(item.href)
+                        ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/20'
+                        : 'text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400'
+                    }`}
+                  >
+                    {item.name}
+                  </Link>
+                ))}
                 
                 {/* Create Post Button for Mobile */}
                 {user && (
@@ -400,12 +364,6 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </footer>
-
-      {/* Contact Modal */}
-      <ContactModal
-        isOpen={isContactModalOpen}
-        onClose={() => setIsContactModalOpen(false)}
-      />
     </div>
   );
 }

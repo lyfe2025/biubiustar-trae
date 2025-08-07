@@ -1,0 +1,657 @@
+---
+alwaysApply: intelligently
+description: UI/UX设计开发专用规范，包含Tailwind CSS应用、响应式设计、可访问性标准、用户体验优化。适用于界面设计、样式开发、交互优化等场景。
+triggerWords: ["ui", "ux", "design", "tailwind", "css", "responsive", "accessibility", "layout", "style", "theme", "color", "animation"]
+---
+
+# UI/UX设计开发规范
+
+> **设计系统**: Tailwind CSS 3.4 + 响应式设计 + 可访问性标准  
+> **适用项目**: BiuBiuStar社交平台 - 现代化用户界面设计
+
+---
+
+## 🔥 UI设计强制规则（P0级）
+
+### 1. Tailwind CSS架构标准
+
+#### 设计系统配置（强制）
+```javascript
+// tailwind.config.js - 强制设计系统配置
+module.exports = {
+  darkMode: "class",
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
+    extend: {
+      // ✅ 强制：统一的色彩系统
+      colors: {
+        primary: {
+          50: "#faf5ff",
+          100: "#f3e8ff", 
+          200: "#e9d5ff",
+          300: "#d8b4fe",
+          400: "#c084fc",
+          500: "#a855f7", // 主色调
+          600: "#9333ea",
+          700: "#7c3aed",
+          800: "#6b21a8",
+          900: "#581c87",
+          950: "#3b0764",
+        },
+        // ✅ 强制：语义化颜色
+        success: {
+          50: "#f0fdf4",
+          500: "#22c55e",
+          600: "#16a34a",
+        },
+        warning: {
+          50: "#fffbeb", 
+          500: "#f59e0b",
+          600: "#d97706",
+        },
+        error: {
+          50: "#fef2f2",
+          500: "#ef4444", 
+          600: "#dc2626",
+        },
+        // ✅ 强制：中性色系
+        neutral: {
+          50: "#fafafa",
+          100: "#f5f5f5",
+          200: "#e5e5e5",
+          300: "#d4d4d4",
+          400: "#a3a3a3",
+          500: "#737373",
+          600: "#525252",
+          700: "#404040",
+          800: "#262626",
+          900: "#171717",
+          950: "#0a0a0a",
+        }
+      },
+      
+      // ✅ 强制：统一的字体系统
+      fontFamily: {
+        sans: ["Inter", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "Consolas", "monospace"],
+      },
+      
+      // ✅ 强制：统一的间距系统
+      spacing: {
+        '18': '4.5rem',   // 72px
+        '88': '22rem',    // 352px
+        '128': '32rem',   // 512px
+      },
+      
+      // ✅ 强制：统一的圆角系统
+      borderRadius: {
+        'xl': '0.75rem',  // 12px
+        '2xl': '1rem',    // 16px
+        '3xl': '1.5rem',  // 24px
+      },
+      
+      // ✅ 强制：统一的阴影系统
+      boxShadow: {
+        'soft': '0 2px 8px 0 rgba(0, 0, 0, 0.05)',
+        'medium': '0 4px 16px 0 rgba(0, 0, 0, 0.1)',
+        'strong': '0 8px 32px 0 rgba(0, 0, 0, 0.15)',
+      }
+    },
+  },
+};
+```
+
+#### 组件样式规范（强制）
+```typescript
+// ✅ 强制：组件样式类组织结构
+interface ComponentStyleProps {
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
+  state?: 'default' | 'hover' | 'active' | 'disabled' | 'loading';
+}
+
+// ✅ 强制：按钮组件样式系统
+const buttonStyles = {
+  // 基础样式
+  base: "inline-flex items-center justify-center font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:pointer-events-none disabled:opacity-50",
+  
+  // 尺寸变体
+  sizes: {
+    sm: "h-8 px-3 text-sm rounded-md",
+    md: "h-10 px-4 text-sm rounded-lg", 
+    lg: "h-12 px-6 text-base rounded-lg",
+    xl: "h-14 px-8 text-lg rounded-xl",
+  },
+  
+  // 样式变体  
+  variants: {
+    primary: "bg-primary-500 text-white hover:bg-primary-600 active:bg-primary-700",
+    secondary: "bg-neutral-100 text-neutral-900 hover:bg-neutral-200 active:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700",
+    outline: "border border-neutral-300 bg-transparent hover:bg-neutral-50 active:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800",
+    ghost: "bg-transparent hover:bg-neutral-100 active:bg-neutral-200 dark:hover:bg-neutral-800 dark:active:bg-neutral-700",
+  }
+};
+
+// ✅ 强制：样式组合函数
+export function getButtonStyles({ 
+  size = 'md', 
+  variant = 'primary' 
+}: ComponentStyleProps = {}) {
+  return [
+    buttonStyles.base,
+    buttonStyles.sizes[size],
+    buttonStyles.variants[variant]
+  ].join(' ');
+}
+```
+
+### 2. 响应式设计强制标准
+
+#### 断点策略（强制遵循）
+```typescript
+// ✅ 强制：响应式断点定义
+export const BREAKPOINTS = {
+  mobile: '320px',      // 小型手机
+  sm: '640px',          // 大型手机
+  md: '768px',          // 平板
+  lg: '1024px',         // 小型桌面
+  xl: '1280px',         // 大型桌面  
+  '2xl': '1536px',      // 超大桌面
+} as const;
+
+// ✅ 强制：移动优先设计原则
+const ResponsiveGrid = () => {
+  return (
+    <div className="
+      grid grid-cols-1      // 移动端：单列
+      sm:grid-cols-2        // 小屏：双列
+      md:grid-cols-3        // 平板：三列
+      lg:grid-cols-4        // 桌面：四列
+      gap-4 sm:gap-6 lg:gap-8
+      p-4 sm:p-6 lg:p-8
+    ">
+      {/* 内容 */}
+    </div>
+  );
+};
+
+// ✅ 强制：响应式字体大小
+const responsiveTextStyles = {
+  // 标题层级
+  h1: "text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold",
+  h2: "text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-semibold", 
+  h3: "text-lg sm:text-xl lg:text-2xl font-semibold",
+  h4: "text-base sm:text-lg lg:text-xl font-medium",
+  
+  // 正文层级
+  body: "text-sm sm:text-base",
+  caption: "text-xs sm:text-sm",
+  
+  // 间距层级
+  sectionPadding: "py-8 sm:py-12 lg:py-16 xl:py-20",
+  containerPadding: "px-4 sm:px-6 lg:px-8",
+};
+```
+
+#### 响应式组件模式（强制实现）
+```typescript
+// ✅ 强制：响应式导航组件
+export function ResponsiveNavigation() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  return (
+    <nav className="bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          {/* Logo */}
+          <div className="flex-shrink-0">
+            <Logo className="h-8 w-auto" />
+          </div>
+          
+          {/* 桌面导航 */}
+          <div className="hidden md:block">
+            <div className="ml-10 flex items-baseline space-x-4">
+              {navigationItems.map((item) => (
+                <NavLink key={item.href} {...item} />
+              ))}
+            </div>
+          </div>
+          
+          {/* 移动端菜单按钮 */}
+          <div className="md:hidden">
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="p-2 rounded-md text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      {/* 移动端菜单 */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden">
+          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800">
+            {navigationItems.map((item) => (
+              <MobileNavLink key={item.href} {...item} />
+            ))}
+          </div>
+        </div>
+      )}
+    </nav>
+  );
+}
+```
+
+### 3. 暗色模式支持（强制实现）
+
+#### 主题切换系统
+```typescript
+// ✅ 强制：主题管理Hook
+export function useTheme() {
+  const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>('system');
+  
+  const setTheme = useCallback((newTheme: 'light' | 'dark' | 'system') => {
+    setThemeState(newTheme);
+    localStorage.setItem('theme', newTheme);
+    
+    // 应用主题
+    if (newTheme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.classList.toggle('dark', systemTheme === 'dark');
+    } else {
+      document.documentElement.classList.toggle('dark', newTheme === 'dark');
+    }
+  }, []);
+  
+  // ✅ 强制：系统主题监听
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    const handleChange = () => {
+      if (theme === 'system') {
+        document.documentElement.classList.toggle('dark', mediaQuery.matches);
+      }
+    };
+    
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [theme]);
+  
+  return { theme, setTheme };
+}
+
+// ✅ 强制：暗色模式样式规范
+const darkModeStyles = {
+  // 背景层级
+  background: {
+    primary: "bg-white dark:bg-neutral-950",
+    secondary: "bg-neutral-50 dark:bg-neutral-900", 
+    tertiary: "bg-neutral-100 dark:bg-neutral-800",
+  },
+  
+  // 文本层级
+  text: {
+    primary: "text-neutral-900 dark:text-neutral-100",
+    secondary: "text-neutral-600 dark:text-neutral-400",
+    tertiary: "text-neutral-500 dark:text-neutral-500",
+  },
+  
+  // 边框层级
+  border: {
+    default: "border-neutral-200 dark:border-neutral-800",
+    subtle: "border-neutral-100 dark:border-neutral-900",
+  }
+};
+```
+
+---
+
+## ⚡ 可访问性强制规则（P0级）
+
+### 1. WCAG 2.1 AA标准（强制遵循）
+
+#### 键盘导航支持
+```typescript
+// ✅ 强制：键盘导航Hook
+export function useKeyboardNavigation() {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Tab导航增强
+      if (event.key === 'Tab') {
+        document.body.classList.add('keyboard-navigation');
+      }
+      
+      // Escape关闭模态框
+      if (event.key === 'Escape') {
+        // 关闭当前打开的模态框
+        closeAllModals();
+      }
+    };
+    
+    const handleMouseDown = () => {
+      document.body.classList.remove('keyboard-navigation');
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleMouseDown);
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleMouseDown);
+    };
+  }, []);
+}
+
+// ✅ 强制：焦点管理
+export function useFocusManagement() {
+  const trapFocus = useCallback((element: HTMLElement) => {
+    const focusableElements = element.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    
+    const firstElement = focusableElements[0] as HTMLElement;
+    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+    
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            lastElement.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            firstElement.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    };
+    
+    element.addEventListener('keydown', handleTabKey);
+    firstElement?.focus();
+    
+    return () => element.removeEventListener('keydown', handleTabKey);
+  }, []);
+  
+  return { trapFocus };
+}
+```
+
+#### 语义化HTML结构（强制）
+```typescript
+// ✅ 强制：语义化组件结构
+export function AccessibleCard({ 
+  title, 
+  content, 
+  action,
+  level = 2 
+}: {
+  title: string;
+  content: string;
+  action?: () => void;
+  level?: 1 | 2 | 3 | 4 | 5 | 6;
+}) {
+  const HeadingTag = `h${level}` as keyof JSX.IntrinsicElements;
+  
+  return (
+    <article 
+      className="bg-white dark:bg-neutral-900 rounded-lg p-6 shadow-soft"
+      role="article"
+      aria-labelledby={`card-title-${title.replace(/\s+/g, '-').toLowerCase()}`}
+    >
+      <HeadingTag 
+        id={`card-title-${title.replace(/\s+/g, '-').toLowerCase()}`}
+        className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-3"
+      >
+        {title}
+      </HeadingTag>
+      
+      <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+        {content}
+      </p>
+      
+      {action && (
+        <button
+          onClick={action}
+          className="inline-flex items-center px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+          aria-describedby={`card-title-${title.replace(/\s+/g, '-').toLowerCase()}`}
+        >
+          了解更多
+          <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+        </button>
+      )}
+    </article>
+  );
+}
+
+// ✅ 强制：表单可访问性
+export function AccessibleForm() {
+  return (
+    <form className="space-y-6" noValidate>
+      <fieldset className="space-y-4">
+        <legend className="text-lg font-medium text-neutral-900 dark:text-neutral-100">
+          用户信息
+        </legend>
+        
+        <div>
+          <label 
+            htmlFor="email"
+            className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2"
+          >
+            邮箱地址 <span className="text-red-500" aria-label="必填">*</span>
+          </label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            required
+            aria-required="true"
+            aria-describedby="email-error"
+            className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            placeholder="请输入邮箱地址"
+          />
+          <div id="email-error" className="mt-1 text-sm text-red-600" role="alert">
+            {/* 错误信息 */}
+          </div>
+        </div>
+      </fieldset>
+    </form>
+  );
+}
+```
+
+### 2. 屏幕阅读器支持（强制）
+
+#### ARIA标签规范
+```typescript
+// ✅ 强制：复杂组件ARIA支持
+export function AccessibleDropdown() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const dropdownId = useId();
+  
+  return (
+    <div className="relative">
+      <button
+        id={`${dropdownId}-trigger`}
+        onClick={() => setIsOpen(!isOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-labelledby={`${dropdownId}-label`}
+        className="w-full px-4 py-2 text-left bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+      >
+        {selectedOption || '请选择选项'}
+        <ChevronDown 
+          className={`ml-auto h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+      
+      {isOpen && (
+        <ul
+          role="listbox"
+          aria-labelledby={`${dropdownId}-label`}
+          className="absolute z-10 w-full mt-1 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg shadow-lg max-h-60 overflow-auto"
+        >
+          {options.map((option, index) => (
+            <li
+              key={option.value}
+              role="option"
+              aria-selected={selectedOption === option.value}
+              onClick={() => {
+                setSelectedOption(option.value);
+                setIsOpen(false);
+              }}
+              className="px-4 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer focus:outline-none focus:bg-primary-100 dark:focus:bg-primary-900"
+              tabIndex={0}
+            >
+              {option.label}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ✅ 强制：加载状态可访问性
+export function AccessibleLoadingState({ isLoading, children }: {
+  isLoading: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative">
+      {children}
+      
+      {isLoading && (
+        <div 
+          className="absolute inset-0 bg-white/50 dark:bg-neutral-900/50 flex items-center justify-center"
+          role="status"
+          aria-live="polite"
+          aria-label="正在加载"
+        >
+          <div className="flex items-center space-x-2">
+            <div className="animate-spin h-5 w-5 border-2 border-primary-500 border-t-transparent rounded-full" />
+            <span className="sr-only">正在加载内容</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## 🎨 动画与交互规则（P1级）
+
+### 1. 动画性能优化
+
+#### CSS动画最佳实践（推荐）
+```css
+/* ✅ 推荐：高性能动画属性 */
+.optimized-animation {
+  /* 只动画transform和opacity */
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  
+  /* 启用硬件加速 */
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* ✅ 推荐：减少动画偏好支持 */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+```
+
+#### React动画组件（推荐）
+```typescript
+// ✅ 推荐：过渡动画组件
+export function FadeTransition({ 
+  show, 
+  children,
+  duration = 300 
+}: {
+  show: boolean;
+  children: React.ReactNode;
+  duration?: number;
+}) {
+  const [shouldRender, setShouldRender] = useState(show);
+  
+  useEffect(() => {
+    if (show) {
+      setShouldRender(true);
+    } else {
+      const timer = setTimeout(() => setShouldRender(false), duration);
+      return () => clearTimeout(timer);
+    }
+  }, [show, duration]);
+  
+  if (!shouldRender) return null;
+  
+  return (
+    <div 
+      className={`transition-all duration-${duration} ${
+        show 
+          ? 'opacity-100 transform translate-y-0' 
+          : 'opacity-0 transform translate-y-2'
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+```
+
+---
+
+## 📋 UI/UX开发检查清单
+
+### 设计系统完成检查
+
+- [ ] **色彩系统**: 使用统一的颜色变量，支持暗色模式
+- [ ] **字体系统**: 合理的字体层级和响应式大小
+- [ ] **间距系统**: 一致的边距和内边距规范
+- [ ] **组件系统**: 可复用的组件样式架构
+
+### 响应式设计检查
+
+- [ ] **移动优先**: 从小屏幕开始设计，逐步增强
+- [ ] **断点合理**: 在主要设备尺寸下表现良好
+- [ ] **触控友好**: 按钮和交互区域足够大（最小44px）
+- [ ] **内容适配**: 文字和图片在所有尺寸下可读
+
+### 可访问性检查
+
+- [ ] **键盘导航**: 所有交互元素可通过键盘访问
+- [ ] **屏幕阅读器**: 正确的ARIA标签和语义化HTML
+- [ ] **颜色对比**: 文字与背景对比度符合WCAG AA标准
+- [ ] **焦点指示**: 清晰的焦点状态指示
+
+### 性能优化检查
+
+- [ ] **动画性能**: 使用transform和opacity进行动画
+- [ ] **减少重排**: 避免频繁修改布局属性
+- [ ] **图片优化**: 适当的图片格式和尺寸
+- [ ] **CSS优化**: 移除未使用的样式，合理的选择器
+
+---
+
+**适用项目**: BiuBiuStar社交平台UI/UX设计  
+**更新频率**: 设计系统变更时同步更新  
+**强制执行**: P0级规则必须100%遵循，P1级规则建议95%以上遵循

@@ -1,0 +1,925 @@
+---
+alwaysApply: intelligently
+description: 企业级安全合规开发专用规范，包含JWT认证、数据保护、威胁检测、隐私合规。适用于安全设计、数据保护、合规审计等场景。
+triggerWords: ["security", "auth", "jwt", "password", "encryption", "privacy", "compliance", "threat", "vulnerability", "audit"]
+---
+## 🛡️ 数据保护强制规则（P0级）
+
+### 1. 敏感数据处理
+
+#### 数据分类与保护（强制标准）
+```typescript
+// ✅ 强制：数据敏感级别定义
+export enum DataSensitivityLevel {
+  PUBLIC = 'PUBLIC',           // 公开数据
+  INTERNAL = 'INTERNAL',       // 内部数据
+  CONFIDENTIAL = 'CONFIDENTIAL', // 机密数据
+  RESTRICTED = 'RESTRICTED',   // 限制级数据
+}
+
+// ✅ 强制：字段敏感级别映射
+export const FIELD_SENSITIVITY: Record<string, DataSensitivityLevel> = {
+  // 公开数据
+  id: DataSensitivityLevel.PUBLIC,
+  username: DataSensitivityLevel.PUBLIC,
+  display_name: DataSensitivityLevel.PUBLIC,
+  avatar_url: DataSensitivityLevel.PUBLIC,
+  bio: DataSensitivityLevel.PUBLIC,
+  created_at: DataSensitivityLevel.PUBLIC,
+  
+  // 内部数据
+  email: DataSensitivityLevel.INTERNAL,
+  location: DataSensitivityLevel.INTERNAL,
+  last_login: DataSensitivityLevel.INTERNAL,
+  
+  // 机密数据
+  phone: DataSensitivityLevel.CONFIDENTIAL,
+  real_name: DataSensitivityLevel.CONFIDENTIAL,
+  id_number: DataSensitivityLevel.CONFIDENTIAL,
+  
+  // 限制级数据
+  password_hash: DataSensitivityLevel.RESTRICTED,
+  payment_info: DataSensitivityLevel.RESTRICTED,
+  private_key: DataSensitivityLevel.RESTRICTED,
+};
+
+// ✅ 强制：数据脱敏处理
+export class DataMaskingService {
+  // ✅ 强制：根据敏感级别脱敏
+  static maskDataBySensitivity<T extends Record<string, any>>(
+    data: T,
+    userRole: string,
+    requestingUserId?: string,
+    dataOwnerId?: string
+  ): Partial<T> {
+    const result: Partial<T> = {};
+    
+    for (const [key, value] of Object.entries(data)) {
+      const sensitivity = FIELD_SENSITIVITY[key] || DataSensitivityLevel.INTERNAL;
+      
+      // 根据权限决定是否返回数据
+      if (this.canAccessField(sensitivity, userRole, requestingUserId, dataOwnerId)) {
+        if (this.shouldMaskField(sensitivity, userRole, requestingUserId, dataOwnerId)) {
+          result[key as keyof T] = this.maskValue(key, value);
+        } else {
+          result[key as keyof T] = value;
+        }
+      }
+      // 如果无权限访问，则不包含该字段
+    }
+    
+    return result;
+  }
+  
+  // ✅ 强制：权限检查
+  private static canAccessField(
+    sensitivity: DataSensitivityLevel,
+    userRole: string,
+    requestingUserId?: string,
+    dataOwnerId?: string
+  ): boolean {
+    // 数据所有者可以访问自己的所有数据
+    if (requestingUserId === dataOwnerId) {
+      return true;
+    }
+    
+    // 根据角色和敏感级别判断
+    switch (sensitivity) {
+      case DataSensitivityLevel.PUBLIC:
+        return true;
+        
+      case DataSensitivityLevel.INTERNAL:
+        return ['user', 'moderator', 'admin', 'super_admin'].includes(userRole);
+        
+      case DataSensitivityLevel.CONFIDENTIAL:
+        return ['admin', 'super_admin'].includes(userRole);
+        
+      case DataSensitivityLevel.RESTRICTED:
+        return userRole === 'super_admin';
+        
+      default:
+        return false;
+    }
+  }
+  
+  // ✅ 强制：是否需要脱敏
+  private static shouldMaskField(
+    sensitivity: DataSensitivityLevel,
+    userRole: string,
+    requestingUserId?: string,
+    dataOwnerId?: string
+  ): boolean {
+    // 数据所有者看到完整数据
+    if (requestingUserId === dataOwnerId) {
+      return false;
+    }
+    
+    // 超级管理员看到完整数据
+    if (userRole === 'super_admin') {
+      return false;
+    }
+    
+    // 其他情况根据敏感级别决定
+    return [DataSensitivityLevel.CONFIDENTIAL, DataSensitivityLevel.RESTRICTED].includes(sensitivity);
+  }
+  
+  // ✅ 强制：值脱敏处理
+  private static maskValue(fieldName: string, value: any): any {
+    if (value == null) return value;
+    
+    switch (fieldName) {
+      case 'email':
+        return this.maskEmail(value);
+      case 'phone':
+        return this.maskPhone(value);
+      case 'id_number':
+        return this.maskIdNumber(value);
+      case 'real_name':
+        return this.maskName(value);
+      default:
+        return '***';
+    }
+  }
+  
+  private static maskEmail(email: string): string {
+    const [local, domain] = email.split('@');
+    if (local.length <= 2) return `${local}***@${domain}`;
+    return `${local.substring(0, 2)}***@${domain}`;
+  }
+  
+  private static maskPhone(phone: string): string {
+    if (phone.length <= 4) return '***';
+    return `${phone.substring(0, 3)}****${phone.substring(phone.length - 4)}`;
+  }
+  
+  private static maskIdNumber(idNumber: string): string {
+    if (idNumber.length <= 8) return '***';
+    return `${idNumber.substring(0, 4)}****${idNumber.substring(idNumber.length - 4)}`;
+  }
+  
+  private static maskName(name: string): string {
+    if (name.length <= 1) return '*';
+    return `${name.charAt(0)}${'*'.repeat(name.length - 1)}`;
+  }
+}
+```
+
+#### 数据加密存储（强制实现）
+```typescript
+// ✅ 强制：数据加密服务
+export class EncryptionService {
+  private readonly algorithm = 'aes-256-gcm';
+  private readonly keyDerivationIterations = 100000;
+  
+  constructor(
+    private readonly encryptionKey: string = process.env.ENCRYPTION_KEY!
+  ) {
+    if (!encryptionKey || encryptionKey.length < 32) {
+      throw new Error('加密密钥必须至少32字符');
+    }
+  }
+  
+  // ✅ 强制：加密敏感数据
+  async encryptSensitiveData(plaintext: string): Promise<string> {
+    try {
+      // 生成随机盐和IV
+      const salt = crypto.randomBytes(32);
+      const iv = crypto.randomBytes(16);
+      
+      // 派生密钥
+      const key = crypto.pbkdf2Sync(
+        this.encryptionKey, 
+        salt, 
+        this.keyDerivationIterations, 
+        32, 
+        'sha256'
+      );
+      
+      // 创建加密器
+      const cipher = crypto.createCipher(this.algorithm, key);
+      cipher.setAAD(salt); // 附加认证数据
+      
+      // 加密数据
+      let encrypted = cipher.update(plaintext, 'utf8', 'hex');
+      encrypted += cipher.final('hex');
+      
+      // 获取认证标签
+      const authTag = cipher.getAuthTag();
+      
+      // 组合结果：salt + iv + authTag + encrypted
+      const result = Buffer.concat([
+        salt,
+        iv,
+        authTag,
+        Buffer.from(encrypted, 'hex')
+      ]).toString('base64');
+      
+      return result;
+    } catch (error) {
+      logger.error('数据加密失败', { error: error.message });
+      throw new Error('数据加密失败');
+    }
+  }
+  
+  // ✅ 强制：解密敏感数据
+  async decryptSensitiveData(encryptedData: string): Promise<string> {
+    try {
+      const buffer = Buffer.from(encryptedData, 'base64');
+      
+      // 提取组件
+      const salt = buffer.subarray(0, 32);
+      const iv = buffer.subarray(32, 48);
+      const authTag = buffer.subarray(48, 64);
+      const encrypted = buffer.subarray(64);
+      
+      // 派生密钥
+      const key = crypto.pbkdf2Sync(
+        this.encryptionKey,
+        salt,
+        this.keyDerivationIterations,
+        32,
+        'sha256'
+      );
+      
+      // 创建解密器
+      const decipher = crypto.createDecipher(this.algorithm, key);
+      decipher.setAAD(salt);
+      decipher.setAuthTag(authTag);
+      
+      // 解密数据
+      let decrypted = decipher.update(encrypted, undefined, 'utf8');
+      decrypted += decipher.final('utf8');
+      
+      return decrypted;
+    } catch (error) {
+      logger.error('数据解密失败', { error: error.message });
+      throw new Error('数据解密失败');
+    }
+  }
+  
+  // ✅ 强制：哈希敏感数据（不可逆）
+  hashSensitiveData(data: string, salt?: string): string {
+    const actualSalt = salt || crypto.randomBytes(16).toString('hex');
+    const hash = crypto.pbkdf2Sync(data, actualSalt, this.keyDerivationIterations, 64, 'sha256');
+    return `${actualSalt}:${hash.toString('hex')}`;
+  }
+  
+  // ✅ 强制：验证哈希
+  verifyHashedData(data: string, hashedData: string): boolean {
+    const [salt, hash] = hashedData.split(':');
+    const dataHash = crypto.pbkdf2Sync(data, salt, this.keyDerivationIterations, 64, 'sha256');
+    return dataHash.toString('hex') === hash;
+  }
+}
+
+export const encryptionService = new EncryptionService();
+```
+
+### 2. API安全防护
+
+#### 输入验证与清理（强制实现）
+```typescript
+// ✅ 强制：输入清理服务
+export class InputSanitizationService {
+  // ✅ 强制：XSS防护
+  static sanitizeHTML(input: string): string {
+    if (!input) return '';
+    
+    // 移除危险标签和属性
+    return input
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+      .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+      .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '')
+      .replace(/javascript:/gi, '')
+      .replace(/on\w+\s*=/gi, '')
+      .replace(/style\s*=/gi, '');
+  }
+  
+  // ✅ 强制：SQL注入防护
+  static sanitizeSQL(input: string): string {
+    if (!input) return '';
+    
+    // 转义危险字符
+    return input
+      .replace(/'/g, "''")
+      .replace(/;/g, '\\;')
+      .replace(/--/g, '\\--')
+      .replace(/\/\*/g, '\\/\\*')
+      .replace(/\*\//g, '\\*\\/')
+      .replace(/xp_/gi, 'x_p_')
+      .replace(/sp_/gi, 's_p_');
+  }
+  
+  // ✅ 强制：命令注入防护
+  static sanitizeCommand(input: string): string {
+    if (!input) return '';
+    
+    // 移除危险字符
+    return input
+      .replace(/[;&|`$(){}[\]]/g, '')
+      .replace(/\n/g, '')
+      .replace(/\r/g, '');
+  }
+  
+  // ✅ 强制：路径遍历防护
+  static sanitizePath(path: string): string {
+    if (!path) return '';
+    
+    return path
+      .replace(/\.\./g, '')
+      .replace(/[<>:"|?*]/g, '')
+      .replace(/^\//g, '')
+      .replace(/\/$/, '');
+  }
+  
+  // ✅ 强制：综合输入清理
+  static sanitizeInput(input: any, type: 'html' | 'sql' | 'command' | 'path' | 'general'): any {
+    if (input === null || input === undefined) return input;
+    
+    if (typeof input === 'string') {
+      switch (type) {
+        case 'html':
+          return this.sanitizeHTML(input);
+        case 'sql':
+          return this.sanitizeSQL(input);
+        case 'command':
+          return this.sanitizeCommand(input);
+        case 'path':
+          return this.sanitizePath(input);
+        case 'general':
+        default:
+          return this.sanitizeHTML(input);
+      }
+    }
+    
+    if (Array.isArray(input)) {
+      return input.map(item => this.sanitizeInput(item, type));
+    }
+    
+    if (typeof input === 'object') {
+      const sanitized: any = {};
+      for (const [key, value] of Object.entries(input)) {
+        sanitized[key] = this.sanitizeInput(value, type);
+      }
+      return sanitized;
+    }
+    
+    return input;
+  }
+}
+
+// ✅ 强制：输入清理中间件
+export const inputSanitization = (type: 'html' | 'sql' | 'command' | 'path' | 'general' = 'general') => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    // 清理请求体
+    if (req.body) {
+      req.body = InputSanitizationService.sanitizeInput(req.body, type);
+    }
+    
+    // 清理查询参数
+    if (req.query) {
+      req.query = InputSanitizationService.sanitizeInput(req.query, type);
+    }
+    
+    // 清理路径参数
+    if (req.params) {
+      req.params = InputSanitizationService.sanitizeInput(req.params, type);
+    }
+    
+    next();
+  };
+};
+```
+
+#### CSRF和CORS安全（强制配置）
+```typescript
+// ✅ 强制：CSRF保护配置
+export const csrfProtection = csrf({
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 3600000, // 1小时
+  },
+  ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
+  value: (req) => {
+    // 从header或body中获取CSRF token
+    return req.get('X-CSRF-Token') || 
+           req.get('X-Requested-With') || 
+           req.body._csrf;
+  },
+});
+
+// ✅ 强制：CORS安全配置
+export const corsOptions: CorsOptions = {
+  origin: (origin, callback) => {
+    const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [];
+    
+    // 开发环境允许localhost
+    if (process.env.NODE_ENV === 'development') {
+      allowedOrigins.push('http://localhost:5173', 'http://localhost:3000');
+    }
+    
+    // 允许无origin的请求（如移动应用）
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      logger.warn('CORS阻止的请求', { origin, allowedOrigins });
+      return callback(new Error('CORS策略不允许此来源'));
+    }
+  },
+  
+  credentials: true,
+  
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'X-CSRF-Token',
+  ],
+  
+  exposedHeaders: ['X-CSRF-Token'],
+  
+  maxAge: 86400, // 24小时
+  
+  preflightContinue: false,
+  optionsSuccessStatus: 200,
+};
+```
+
+---
+
+## 🚨 安全监控强制规则（P0级）
+
+### 1. 安全事件监控
+
+#### 安全日志记录（强制实现）
+```typescript
+// ✅ 强制：安全事件类型定义
+export enum SecurityEventType {
+  // 认证事件
+  LOGIN_SUCCESS = 'LOGIN_SUCCESS',
+  LOGIN_FAILURE = 'LOGIN_FAILURE',
+  LOGIN_BLOCKED = 'LOGIN_BLOCKED',
+  LOGOUT = 'LOGOUT',
+  TOKEN_REFRESH = 'TOKEN_REFRESH',
+  TOKEN_EXPIRED = 'TOKEN_EXPIRED',
+  
+  // 授权事件
+  ACCESS_DENIED = 'ACCESS_DENIED',
+  PRIVILEGE_ESCALATION = 'PRIVILEGE_ESCALATION',
+  UNAUTHORIZED_ACCESS = 'UNAUTHORIZED_ACCESS',
+  
+  // 数据事件
+  DATA_ACCESS = 'DATA_ACCESS',
+  DATA_MODIFICATION = 'DATA_MODIFICATION',
+  DATA_DELETION = 'DATA_DELETION',
+  SENSITIVE_DATA_ACCESS = 'SENSITIVE_DATA_ACCESS',
+  
+  // 攻击事件
+  SQL_INJECTION_ATTEMPT = 'SQL_INJECTION_ATTEMPT',
+  XSS_ATTEMPT = 'XSS_ATTEMPT',
+  CSRF_ATTEMPT = 'CSRF_ATTEMPT',
+  BRUTE_FORCE_ATTACK = 'BRUTE_FORCE_ATTACK',
+  
+  // 系统事件
+  SYSTEM_CONFIGURATION_CHANGE = 'SYSTEM_CONFIGURATION_CHANGE',
+  ADMIN_ACTION = 'ADMIN_ACTION',
+  SUSPICIOUS_ACTIVITY = 'SUSPICIOUS_ACTIVITY',
+}
+
+// ✅ 强制：安全事件记录服务
+export class SecurityAuditService {
+  private static instance: SecurityAuditService;
+  
+  static getInstance(): SecurityAuditService {
+    if (!SecurityAuditService.instance) {
+      SecurityAuditService.instance = new SecurityAuditService();
+    }
+    return SecurityAuditService.instance;
+  }
+  
+  // ✅ 强制：记录安全事件
+  async logSecurityEvent(event: {
+    type: SecurityEventType;
+    userId?: string;
+    ip: string;
+    userAgent: string;
+    resource?: string;
+    action?: string;
+    result: 'SUCCESS' | 'FAILURE' | 'BLOCKED';
+    details?: Record<string, any>;
+    riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  }): Promise<void> {
+    const securityLog = {
+      ...event,
+      timestamp: new Date().toISOString(),
+      id: crypto.randomUUID(),
+    };
+    
+    // ✅ 强制：写入安全日志数据库
+    await this.writeToSecurityLog(securityLog);
+    
+    // ✅ 强制：高风险事件实时告警
+    if (event.riskLevel === 'CRITICAL' || event.riskLevel === 'HIGH') {
+      await this.sendSecurityAlert(securityLog);
+    }
+    
+    // ✅ 强制：结构化日志记录
+    logger.info('安全事件', securityLog);
+  }
+  
+  private async writeToSecurityLog(log: any): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('security_logs')
+        .insert(log);
+      
+      if (error) {
+        logger.error('安全日志写入失败', { error: error.message, log });
+      }
+    } catch (error) {
+      logger.error('安全日志系统异常', { error, log });
+    }
+  }
+  
+  private async sendSecurityAlert(log: any): Promise<void> {
+    try {
+      // 发送到安全团队
+      await fetch(process.env.SECURITY_WEBHOOK_URL!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: `🚨 安全告警: ${log.type}`,
+          attachments: [{
+            color: log.riskLevel === 'CRITICAL' ? 'danger' : 'warning',
+            fields: [
+              { title: '事件类型', value: log.type, short: true },
+              { title: '风险级别', value: log.riskLevel, short: true },
+              { title: '用户ID', value: log.userId || 'Unknown', short: true },
+              { title: 'IP地址', value: log.ip, short: true },
+              { title: '时间', value: log.timestamp, short: false },
+              { title: '详情', value: JSON.stringify(log.details), short: false },
+            ]
+          }]
+        })
+      });
+    } catch (error) {
+      logger.error('安全告警发送失败', { error });
+    }
+  }
+  
+  // ✅ 强制：异常行为检测
+  async detectAnomalousActivity(userId: string, activity: {
+    type: string;
+    ip: string;
+    userAgent: string;
+    timestamp: number;
+  }): Promise<{
+    isAnomalous: boolean;
+    riskScore: number;
+    reasons: string[];
+  }> {
+    const reasons: string[] = [];
+    let riskScore = 0;
+    
+    // 检查IP地址变化
+    const recentIPs = await this.getUserRecentIPs(userId, 24 * 60 * 60 * 1000); // 24小时
+    if (recentIPs.length > 0 && !recentIPs.includes(activity.ip)) {
+      riskScore += 30;
+      reasons.push('来自新的IP地址');
+    }
+    
+    // 检查用户代理变化
+    const recentUserAgents = await this.getUserRecentUserAgents(userId, 24 * 60 * 60 * 1000);
+    if (recentUserAgents.length > 0 && !recentUserAgents.includes(activity.userAgent)) {
+      riskScore += 20;
+      reasons.push('使用新的设备或浏览器');
+    }
+    
+    // 检查活动频率
+    const recentActivityCount = await this.getUserRecentActivityCount(userId, 60 * 60 * 1000); // 1小时
+    if (recentActivityCount > 100) {
+      riskScore += 40;
+      reasons.push('活动频率异常高');
+    }
+    
+    // 检查异常时间
+    const hour = new Date().getHours();
+    if (hour < 6 || hour > 23) { // 凌晨活动
+      riskScore += 10;
+      reasons.push('在异常时间活动');
+    }
+    
+    return {
+      isAnomalous: riskScore >= 50,
+      riskScore,
+      reasons,
+    };
+  }
+  
+  private async getUserRecentIPs(userId: string, timeWindow: number): Promise<string[]> {
+    const since = new Date(Date.now() - timeWindow).toISOString();
+    
+    const { data, error } = await supabase
+      .from('security_logs')
+      .select('ip')
+      .eq('user_id', userId)
+      .gte('timestamp', since)
+      .limit(10);
+    
+    if (error) return [];
+    
+    return [...new Set(data.map(log => log.ip))];
+  }
+  
+  private async getUserRecentUserAgents(userId: string, timeWindow: number): Promise<string[]> {
+    const since = new Date(Date.now() - timeWindow).toISOString();
+    
+    const { data, error } = await supabase
+      .from('security_logs')
+      .select('user_agent')
+      .eq('user_id', userId)
+      .gte('timestamp', since)
+      .limit(10);
+    
+    if (error) return [];
+    
+    return [...new Set(data.map(log => log.user_agent))];
+  }
+  
+  private async getUserRecentActivityCount(userId: string, timeWindow: number): Promise<number> {
+    const since = new Date(Date.now() - timeWindow).toISOString();
+    
+    const { count, error } = await supabase
+      .from('security_logs')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('timestamp', since);
+    
+    if (error) return 0;
+    
+    return count || 0;
+  }
+}
+
+export const securityAudit = SecurityAuditService.getInstance();
+```
+
+### 2. 威胁检测与响应
+
+#### 实时威胁检测（强制实现）
+```typescript
+// ✅ 强制：威胁检测中间件
+export const threatDetectionMiddleware = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const ip = req.ip;
+    const userAgent = req.get('user-agent') || '';
+    const userId = (req as any).user?.id;
+    
+    // ✅ 强制：检测SQL注入尝试
+    const sqlInjectionDetected = detectSQLInjection(req);
+    if (sqlInjectionDetected) {
+      await securityAudit.logSecurityEvent({
+        type: SecurityEventType.SQL_INJECTION_ATTEMPT,
+        userId,
+        ip,
+        userAgent,
+        resource: req.path,
+        action: req.method,
+        result: 'BLOCKED',
+        details: { 
+          suspiciousParams: sqlInjectionDetected.suspiciousParams,
+          detectedPatterns: sqlInjectionDetected.patterns 
+        },
+        riskLevel: 'HIGH',
+      });
+      
+      return res.status(400).json({
+        success: false,
+        error: { code: 'SECURITY_VIOLATION' },
+        message: '检测到可疑请求'
+      });
+    }
+    
+    // ✅ 强制：检测XSS尝试
+    const xssDetected = detectXSS(req);
+    if (xssDetected) {
+      await securityAudit.logSecurityEvent({
+        type: SecurityEventType.XSS_ATTEMPT,
+        userId,
+        ip,
+        userAgent,
+        resource: req.path,
+        action: req.method,
+        result: 'BLOCKED',
+        details: { 
+          suspiciousContent: xssDetected.suspiciousContent,
+          detectedTags: xssDetected.tags 
+        },
+        riskLevel: 'HIGH',
+      });
+      
+      return res.status(400).json({
+        success: false,
+        error: { code: 'SECURITY_VIOLATION' },
+        message: '检测到可疑内容'
+      });
+    }
+    
+    // ✅ 强制：检测异常行为
+    if (userId) {
+      const anomalyResult = await securityAudit.detectAnomalousActivity(userId, {
+        type: req.method,
+        ip,
+        userAgent,
+        timestamp: Date.now(),
+      });
+      
+      if (anomalyResult.isAnomalous) {
+        await securityAudit.logSecurityEvent({
+          type: SecurityEventType.SUSPICIOUS_ACTIVITY,
+          userId,
+          ip,
+          userAgent,
+          resource: req.path,
+          action: req.method,
+          result: 'SUCCESS',
+          details: {
+            riskScore: anomalyResult.riskScore,
+            reasons: anomalyResult.reasons,
+          },
+          riskLevel: anomalyResult.riskScore > 70 ? 'HIGH' : 'MEDIUM',
+        });
+      }
+    }
+    
+    next();
+  } catch (error) {
+    logger.error('威胁检测中间件异常', { error });
+    next(); // 不阻止正常请求
+  }
+};
+
+// ✅ 强制：SQL注入检测
+function detectSQLInjection(req: Request): {
+  suspiciousParams: string[];
+  patterns: string[];
+} | null {
+  const sqlPatterns = [
+    /('|(\\\')|(\-\-)|(;)|(\|)|(\*)|(%7c))/i,
+    /(union|select|insert|delete|update|drop|create|alter|exec|execute)/i,
+    /(script|javascript|vbscript|onload|onerror|onclick)/i,
+  ];
+  
+  const suspiciousParams: string[] = [];
+  const detectedPatterns: string[] = [];
+  
+  const checkValue = (value: string, paramName: string) => {
+    for (const pattern of sqlPatterns) {
+      if (pattern.test(value)) {
+        suspiciousParams.push(paramName);
+        detectedPatterns.push(pattern.source);
+      }
+    }
+  };
+  
+  // 检查查询参数
+  for (const [key, value] of Object.entries(req.query)) {
+    if (typeof value === 'string') {
+      checkValue(value, `query.${key}`);
+    }
+  }
+  
+  // 检查请求体
+  const checkObject = (obj: any, prefix: string) => {
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === 'string') {
+        checkValue(value, `${prefix}.${key}`);
+      } else if (typeof value === 'object' && value !== null) {
+        checkObject(value, `${prefix}.${key}`);
+      }
+    }
+  };
+  
+  if (req.body && typeof req.body === 'object') {
+    checkObject(req.body, 'body');
+  }
+  
+  return suspiciousParams.length > 0 ? { suspiciousParams, patterns: detectedPatterns } : null;
+}
+
+// ✅ 强制：XSS检测
+function detectXSS(req: Request): {
+  suspiciousContent: string[];
+  tags: string[];
+} | null {
+  const xssPatterns = [
+    /<script[\s\S]*?>[\s\S]*?<\/script>/i,
+    /<iframe[\s\S]*?>[\s\S]*?<\/iframe>/i,
+    /javascript:/i,
+    /on\w+\s*=/i,
+    /<img[\s\S]*?src[\s\S]*?javascript:/i,
+  ];
+  
+  const suspiciousContent: string[] = [];
+  const detectedTags: string[] = [];
+  
+  const checkValue = (value: string, location: string) => {
+    for (const pattern of xssPatterns) {
+      if (pattern.test(value)) {
+        suspiciousContent.push(location);
+        detectedTags.push(pattern.source);
+      }
+    }
+  };
+  
+  // 检查所有字符串值
+  const checkObject = (obj: any, prefix: string) => {
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === 'string') {
+        checkValue(value, `${prefix}.${key}`);
+      } else if (typeof value === 'object' && value !== null) {
+        checkObject(value, `${prefix}.${key}`);
+      }
+    }
+  };
+  
+  if (req.body && typeof req.body === 'object') {
+    checkObject(req.body, 'body');
+  }
+  
+  for (const [key, value] of Object.entries(req.query)) {
+    if (typeof value === 'string') {
+      checkValue(value, `query.${key}`);
+    }
+  }
+  
+  return suspiciousContent.length > 0 ? { suspiciousContent, tags: detectedTags } : null;
+}
+```
+
+---
+
+## 📋 安全合规检查清单
+
+### 开发阶段安全检查
+
+#### 认证与授权
+- [ ] **JWT配置**: 使用强密钥、合理过期时间、安全算法
+- [ ] **密码策略**: 符合复杂度要求、安全哈希存储
+- [ ] **登录保护**: 实现账户锁定、IP限制、异常检测
+- [ ] **权限控制**: RBAC实现、最小权限原则
+- [ ] **会话管理**: 安全的会话创建、刷新、销毁
+
+#### 数据保护
+- [ ] **数据分类**: 敏感数据正确分类和标记
+- [ ] **加密存储**: 敏感数据加密存储
+- [ ] **数据脱敏**: 根据权限正确脱敏
+- [ ] **传输加密**: 使用HTTPS/TLS
+- [ ] **访问控制**: 数据访问权限正确实现
+
+#### 输入验证
+- [ ] **XSS防护**: 用户输入正确过滤和转义
+- [ ] **SQL注入**: 使用参数化查询
+- [ ] **CSRF保护**: 实现CSRF token验证
+- [ ] **输入清理**: 危险字符正确处理
+- [ ] **文件上传**: 文件类型和大小限制
+
+### 发布前安全检查
+
+#### 安全配置
+- [ ] **环境变量**: 敏感信息不在代码中硬编码
+- [ ] **CORS配置**: 正确配置允许的域名
+- [ ] **安全头**: 设置适当的安全HTTP头
+- [ ] **错误处理**: 不泄露敏感信息的错误消息
+- [ ] **日志安全**: 敏感信息不记录在日志中
+
+#### 监控告警
+- [ ] **安全日志**: 完整的安全事件记录
+- [ ] **异常检测**: 实时检测可疑活动
+- [ ] **告警机制**: 安全事件及时通知
+- [ ] **审计追踪**: 重要操作可追溯
+- [ ] **威胁检测**: 自动化威胁检测和响应
+
+#### 合规性检查
+- [ ] **数据隐私**: 符合GDPR/CCPA要求
+- [ ] **用户同意**: 隐私政策和用户协议
+- [ ] **数据留存**: 合理的数据保留策略
+- [ ] **删除权**: 用户数据删除功能
+- [ ] **透明度**: 数据使用透明化
+
+---
+
+**适用项目**: BiuBiuStar社交平台安全合规  
+**更新频率**: 安全威胁变化时及时更新  
+**强制执行**: 所有P0级规则必须100%遵循，关键安全控制不得妥协

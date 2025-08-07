@@ -1,0 +1,811 @@
+---
+alwaysApply: intelligently
+description: 国际化与本地化开发专用规范，包含多语言支持、文本翻译、地区适配、RTL支持。适用于多语言应用、本地化开发、国际化改造等场景。
+triggerWords: ["i18n", "internationalization", "localization", "translation", "language", "locale", "multilingual", "rtl", "timezone", "currency"]
+---
+
+# 国际化与本地化开发规范
+
+> **国际化框架**: i18next + react-i18next + 多语言支持  
+> **适用项目**: BiuBiuStar社交平台 - 全球化多语言应用
+
+---
+
+## 🔥 国际化架构强制规则（P0级）
+
+### 1. i18next配置标准
+
+#### 核心配置（强制）
+```typescript
+// src/i18n/index.ts - 强制i18n配置标准
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import LanguageDetector from 'i18next-browser-languagedetector';
+
+// ✅ 强制：支持的语言列表
+export const SUPPORTED_LANGUAGES = {
+  'zh': {
+    code: 'zh',
+    name: '简体中文',
+    nativeName: '简体中文',
+    flag: '🇨🇳',
+    direction: 'ltr' as const,
+  },
+  'zh-TW': {
+    code: 'zh-TW', 
+    name: '繁體中文',
+    nativeName: '繁體中文',
+    flag: '🇹🇼',
+    direction: 'ltr' as const,
+  },
+  'en': {
+    code: 'en',
+    name: 'English',
+    nativeName: 'English', 
+    flag: '🇺🇸',
+    direction: 'ltr' as const,
+  },
+  'ja': {
+    code: 'ja',
+    name: '日本語',
+    nativeName: '日本語',
+    flag: '🇯🇵',
+    direction: 'ltr' as const,
+  },
+  'ko': {
+    code: 'ko',
+    name: '한국어',
+    nativeName: '한국어',
+    flag: '🇰🇷',
+    direction: 'ltr' as const,
+  },
+  'vi': {
+    code: 'vi',
+    name: 'Tiếng Việt',
+    nativeName: 'Tiếng Việt',
+    flag: '🇻🇳',
+    direction: 'ltr' as const,
+  }
+} as const;
+
+export type SupportedLanguage = keyof typeof SUPPORTED_LANGUAGES;
+
+// ✅ 强制：i18n初始化配置
+i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    // ✅ 强制：基础配置
+    fallbackLng: 'zh',
+    defaultNS: 'common',
+    debug: process.env.NODE_ENV === 'development',
+    
+    // ✅ 强制：语言检测配置
+    detection: {
+      order: ['localStorage', 'navigator', 'htmlTag'],
+      caches: ['localStorage'],
+      lookupLocalStorage: 'i18nextLng',
+    },
+    
+    // ✅ 强制：插值配置
+    interpolation: {
+      escapeValue: false, // React已经防XSS
+      formatSeparator: ',',
+      format: (value, format, lng) => {
+        // 数字格式化
+        if (format === 'number') {
+          return new Intl.NumberFormat(lng).format(value);
+        }
+        
+        // 货币格式化
+        if (format?.startsWith('currency')) {
+          const currency = format.split(':')[1] || 'USD';
+          return new Intl.NumberFormat(lng, {
+            style: 'currency',
+            currency: currency.toUpperCase(),
+          }).format(value);
+        }
+        
+        // 日期格式化
+        if (format === 'date') {
+          return new Intl.DateTimeFormat(lng).format(new Date(value));
+        }
+        
+        if (format === 'datetime') {
+          return new Intl.DateTimeFormat(lng, {
+            year: 'numeric',
+            month: 'short', 
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }).format(new Date(value));
+        }
+        
+        return value;
+      },
+    },
+    
+    // ✅ 强制：资源配置
+    resources: {
+      zh: {
+        common: () => import('../locales/zh.json'),
+        auth: () => import('../locales/zh/auth.json'),
+        posts: () => import('../locales/zh/posts.json'),
+        settings: () => import('../locales/zh/settings.json'),
+      },
+      'zh-TW': {
+        common: () => import('../locales/zh-tw.json'),
+        auth: () => import('../locales/zh-tw/auth.json'),
+        posts: () => import('../locales/zh-tw/posts.json'),
+        settings: () => import('../locales/zh-tw/settings.json'),
+      },
+      en: {
+        common: () => import('../locales/en.json'),
+        auth: () => import('../locales/en/auth.json'),
+        posts: () => import('../locales/en/posts.json'),
+        settings: () => import('../locales/en/settings.json'),
+      },
+      // 其他语言...
+    },
+    
+    // ✅ 强制：React配置
+    react: {
+      useSuspense: true,
+      bindI18n: 'languageChanged',
+      bindI18nStore: '',
+      transEmptyNodeValue: '',
+      transSupportBasicHtmlNodes: true,
+      transKeepBasicHtmlNodesFor: ['br', 'strong', 'i', 'em'],
+    },
+  });
+
+export default i18n;
+```
+
+#### 命名空间组织（强制）
+```typescript
+// ✅ 强制：翻译命名空间结构
+export const I18N_NAMESPACES = {
+  // 通用命名空间
+  common: 'common',           // 通用文本、按钮、标签
+  navigation: 'navigation',   // 导航菜单、面包屑
+  errors: 'errors',          // 错误信息、验证消息
+  
+  // 功能命名空间
+  auth: 'auth',              // 认证相关：登录、注册
+  posts: 'posts',            // 帖子相关：创建、编辑
+  users: 'users',            // 用户相关：资料、设置
+  notifications: 'notifications', // 通知消息
+  settings: 'settings',      // 系统设置
+  admin: 'admin',            // 管理功能
+  
+  // 页面命名空间
+  home: 'home',              // 首页内容
+  profile: 'profile',        // 个人资料页
+  search: 'search',          // 搜索功能
+  
+} as const;
+
+// ✅ 强制：翻译键命名规范
+interface TranslationKeyStructure {
+  // 功能模块.操作.具体内容
+  'auth.login.title': string;
+  'auth.login.email.label': string;
+  'auth.login.email.placeholder': string;
+  'auth.login.email.error.required': string;
+  'auth.login.email.error.invalid': string;
+  'auth.login.password.label': string;
+  'auth.login.submit': string;
+  'auth.login.success': string;
+  'auth.login.error.credentials': string;
+  
+  // 通用操作
+  'common.actions.save': string;
+  'common.actions.cancel': string;
+  'common.actions.delete': string;
+  'common.actions.edit': string;
+  'common.actions.confirm': string;
+  
+  // 状态信息
+  'common.status.loading': string;
+  'common.status.success': string;
+  'common.status.error': string;
+  'common.status.empty': string;
+}
+```
+
+### 2. 翻译文件组织（强制标准）
+
+#### 文件结构（强制）
+```
+src/i18n/locales/
+├── zh.json                 # 中文（简体）主文件
+├── zh-tw.json             # 中文（繁体）主文件  
+├── en.json                # 英文主文件
+├── ja.json                # 日文主文件
+├── ko.json                # 韩文主文件
+├── vi.json                # 越南文主文件
+├── zh/                    # 中文（简体）模块化
+│   ├── auth.json
+│   ├── posts.json
+│   ├── settings.json
+│   └── errors.json
+├── zh-tw/                 # 中文（繁体）模块化
+│   ├── auth.json
+│   ├── posts.json
+│   ├── settings.json
+│   └── errors.json
+└── en/                    # 英文模块化
+    ├── auth.json
+    ├── posts.json
+    ├── settings.json
+    └── errors.json
+```
+
+#### 翻译内容规范（强制）
+```json
+// src/i18n/locales/zh/auth.json - 强制翻译格式
+{
+  "login": {
+    "title": "登录到BiuBiuStar",
+    "subtitle": "欢迎回来！请登录您的账户",
+    "form": {
+      "email": {
+        "label": "邮箱地址",
+        "placeholder": "请输入您的邮箱地址",
+        "error": {
+          "required": "邮箱地址不能为空",
+          "invalid": "请输入有效的邮箱地址"
+        }
+      },
+      "password": {
+        "label": "密码", 
+        "placeholder": "请输入您的密码",
+        "error": {
+          "required": "密码不能为空",
+          "minLength": "密码长度不能少于{{min}}位"
+        }
+      },
+      "rememberMe": "记住我",
+      "forgotPassword": "忘记密码？"
+    },
+    "actions": {
+      "submit": "登录",
+      "register": "注册新账户",
+      "socialLogin": "使用{{provider}}登录"
+    },
+    "messages": {
+      "success": "登录成功！欢迎回来，{{username}}！",
+      "error": {
+        "invalidCredentials": "邮箱或密码错误，请重试",
+        "accountLocked": "账户已被锁定，请稍后再试",
+        "tooManyAttempts": "登录尝试次数过多，请{{minutes}}分钟后再试"
+      }
+    }
+  },
+  "register": {
+    "title": "注册BiuBiuStar账户",
+    "subtitle": "加入我们的社区，开始您的精彩旅程",
+    // 更多注册相关翻译...
+  }
+}
+
+// src/i18n/locales/zh/posts.json - 帖子模块翻译
+{
+  "create": {
+    "title": "创建新帖子",
+    "form": {
+      "content": {
+        "label": "帖子内容",
+        "placeholder": "分享您的想法...",
+        "counter": "{{current}}/{{max}} 字符"
+      },
+      "images": {
+        "label": "添加图片",
+        "dragDrop": "拖拽图片到这里，或点击选择",
+        "limit": "最多可上传{{max}}张图片"
+      },
+      "privacy": {
+        "label": "隐私设置",
+        "public": "公开",
+        "friends": "仅好友可见", 
+        "private": "仅自己可见"
+      }
+    },
+    "actions": {
+      "publish": "发布",
+      "saveDraft": "保存草稿",
+      "preview": "预览"
+    },
+    "messages": {
+      "success": "帖子发布成功！",
+      "draftSaved": "草稿已保存",
+      "error": {
+        "contentRequired": "帖子内容不能为空",
+        "contentTooLong": "帖子内容不能超过{{max}}字符",
+        "imageUploadFailed": "图片上传失败：{{error}}"
+      }
+    }
+  }
+}
+```
+
+### 3. React Hook集成（强制实现）
+
+#### 翻译Hook封装
+```typescript
+// src/hooks/useTranslation.ts - 强制翻译Hook
+import { useTranslation as useI18nTranslation } from 'react-i18next';
+import { useMemo } from 'react';
+import type { SupportedLanguage } from '@/i18n';
+
+// ✅ 强制：增强的翻译Hook
+export function useTranslation(namespace?: string) {
+  const { t, i18n } = useI18nTranslation(namespace);
+  
+  // ✅ 强制：当前语言信息
+  const currentLanguage = useMemo(() => {
+    const lang = i18n.language as SupportedLanguage;
+    return SUPPORTED_LANGUAGES[lang] || SUPPORTED_LANGUAGES.zh;
+  }, [i18n.language]);
+  
+  // ✅ 强制：格式化函数
+  const formatters = useMemo(() => ({
+    // 数字格式化
+    number: (value: number, options?: Intl.NumberFormatOptions) => {
+      return new Intl.NumberFormat(currentLanguage.code, options).format(value);
+    },
+    
+    // 货币格式化
+    currency: (value: number, currency: string = 'USD') => {
+      return new Intl.NumberFormat(currentLanguage.code, {
+        style: 'currency',
+        currency: currency.toUpperCase(),
+      }).format(value);
+    },
+    
+    // 日期格式化
+    date: (date: Date | string, options?: Intl.DateTimeFormatOptions) => {
+      return new Intl.DateTimeFormat(currentLanguage.code, options).format(new Date(date));
+    },
+    
+    // 相对时间格式化
+    relativeTime: (date: Date | string) => {
+      const rtf = new Intl.RelativeTimeFormat(currentLanguage.code, { numeric: 'auto' });
+      const now = new Date();
+      const target = new Date(date);
+      const diffInSeconds = (target.getTime() - now.getTime()) / 1000;
+      
+      if (Math.abs(diffInSeconds) < 60) {
+        return rtf.format(Math.round(diffInSeconds), 'second');
+      } else if (Math.abs(diffInSeconds) < 3600) {
+        return rtf.format(Math.round(diffInSeconds / 60), 'minute');
+      } else if (Math.abs(diffInSeconds) < 86400) {
+        return rtf.format(Math.round(diffInSeconds / 3600), 'hour');
+      } else {
+        return rtf.format(Math.round(diffInSeconds / 86400), 'day');
+      }
+    },
+  }), [currentLanguage]);
+  
+  // ✅ 强制：复数处理
+  const plural = (key: string, count: number, options?: any) => {
+    return t(key, { count, ...options });
+  };
+  
+  // ✅ 强制：上下文翻译
+  const contextual = (key: string, context: string, options?: any) => {
+    return t(`${key}_${context}`, options) || t(key, options);
+  };
+  
+  return {
+    t,
+    i18n,
+    currentLanguage,
+    formatters,
+    plural,
+    contextual,
+    // 便捷方法
+    changeLanguage: i18n.changeLanguage,
+    isRTL: currentLanguage.direction === 'rtl',
+  };
+}
+
+// ✅ 强制：命名空间专用Hook
+export function useAuthTranslation() {
+  return useTranslation('auth');
+}
+
+export function usePostsTranslation() {
+  return useTranslation('posts');
+}
+
+export function useErrorTranslation() {
+  return useTranslation('errors');
+}
+```
+
+#### 语言切换组件（强制实现）
+```typescript
+// src/components/LanguageSwitcher.tsx - 强制语言切换器
+import { useState } from 'react';
+import { useTranslation } from '@/hooks/useTranslation';
+import { SUPPORTED_LANGUAGES, type SupportedLanguage } from '@/i18n';
+
+export function LanguageSwitcher() {
+  const { currentLanguage, changeLanguage } = useTranslation();
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const handleLanguageChange = async (langCode: SupportedLanguage) => {
+    try {
+      await changeLanguage(langCode);
+      setIsOpen(false);
+      
+      // ✅ 强制：更新HTML lang属性
+      document.documentElement.lang = langCode;
+      
+      // ✅ 强制：更新页面方向
+      const language = SUPPORTED_LANGUAGES[langCode];
+      document.documentElement.dir = language.direction;
+      
+      // ✅ 强制：通知用户语言已切换
+      // toast.success(t('common.language.changed', { language: language.nativeName }));
+    } catch (error) {
+      console.error('切换语言失败:', error);
+    }
+  };
+  
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+        aria-label="选择语言"
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+      >
+        <span className="text-lg">{currentLanguage.flag}</span>
+        <span className="text-sm font-medium">{currentLanguage.nativeName}</span>
+        <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      
+      {isOpen && (
+        <div className="absolute top-full right-0 mt-1 w-48 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 z-50">
+          <div className="py-1" role="listbox">
+            {Object.entries(SUPPORTED_LANGUAGES).map(([code, language]) => (
+              <button
+                key={code}
+                onClick={() => handleLanguageChange(code as SupportedLanguage)}
+                className={`w-full flex items-center space-x-3 px-4 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors ${
+                  currentLanguage.code === code ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400' : ''
+                }`}
+                role="option"
+                aria-selected={currentLanguage.code === code}
+              >
+                <span className="text-lg">{language.flag}</span>
+                <div className="flex-1">
+                  <div className="text-sm font-medium">{language.nativeName}</div>
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400">{language.name}</div>
+                </div>
+                {currentLanguage.code === code && (
+                  <Check className="h-4 w-4 text-primary-500" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## ⚡ 本地化适配规则（P1级）
+
+### 1. 地区特定格式化
+
+#### 数字和货币格式化（推荐）
+```typescript
+// src/utils/localization.ts - 推荐本地化工具
+export class LocalizationUtils {
+  // ✅ 推荐：智能货币格式化
+  static formatCurrency(
+    amount: number, 
+    locale: string,
+    currency?: string
+  ): string {
+    // 根据地区智能选择货币
+    const currencyMap: Record<string, string> = {
+      'zh': 'CNY',
+      'zh-TW': 'TWD', 
+      'ja': 'JPY',
+      'ko': 'KRW',
+      'en': 'USD',
+      'vi': 'VND',
+    };
+    
+    const targetCurrency = currency || currencyMap[locale] || 'USD';
+    
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: targetCurrency,
+      minimumFractionDigits: targetCurrency === 'JPY' ? 0 : 2,
+    }).format(amount);
+  }
+  
+  // ✅ 推荐：智能日期格式化
+  static formatDate(
+    date: Date | string,
+    locale: string,
+    style: 'short' | 'medium' | 'long' | 'full' = 'medium'
+  ): string {
+    const dateObj = new Date(date);
+    
+    const styleMap = {
+      short: { dateStyle: 'short' as const },
+      medium: { dateStyle: 'medium' as const },
+      long: { dateStyle: 'long' as const },
+      full: { dateStyle: 'full' as const },
+    };
+    
+    return new Intl.DateTimeFormat(locale, styleMap[style]).format(dateObj);
+  }
+  
+  // ✅ 推荐：智能电话号码格式化
+  static formatPhoneNumber(phone: string, locale: string): string {
+    // 基础清理
+    const cleaned = phone.replace(/\D/g, '');
+    
+    // 根据地区格式化
+    switch (locale) {
+      case 'zh':
+        // 中国大陆：+86 138 0013 8000
+        if (cleaned.length === 11) {
+          return `+86 ${cleaned.slice(0, 3)} ${cleaned.slice(3, 7)} ${cleaned.slice(7)}`;
+        }
+        break;
+      case 'en':
+        // 美国：+1 (555) 123-4567
+        if (cleaned.length === 10) {
+          return `+1 (${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+        }
+        break;
+      case 'ja':
+        // 日本：+81 90-1234-5678
+        if (cleaned.length === 11) {
+          return `+81 ${cleaned.slice(1, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
+        }
+        break;
+    }
+    
+    return phone; // 返回原始格式
+  }
+  
+  // ✅ 推荐：地址格式化
+  static formatAddress(address: {
+    country?: string;
+    state?: string;
+    city?: string;
+    street?: string;
+    postalCode?: string;
+  }, locale: string): string {
+    const { country, state, city, street, postalCode } = address;
+    
+    // 根据地区调整地址顺序
+    switch (locale) {
+      case 'zh':
+      case 'ja':
+      case 'ko':
+        // 东亚格式：国家 省/州 城市 街道 邮编
+        return [country, state, city, street, postalCode]
+          .filter(Boolean)
+          .join(' ');
+          
+      default:
+        // 西方格式：街道, 城市, 省/州 邮编, 国家
+        return [
+          street,
+          [city, state].filter(Boolean).join(', '),
+          postalCode,
+          country
+        ].filter(Boolean).join(', ');
+    }
+  }
+}
+```
+
+### 2. RTL（从右到左）支持
+
+#### RTL布局适配（推荐）
+```typescript
+// src/hooks/useRTL.ts - RTL支持Hook
+export function useRTL() {
+  const { currentLanguage } = useTranslation();
+  const isRTL = currentLanguage.direction === 'rtl';
+  
+  useEffect(() => {
+    // 更新文档方向
+    document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
+    
+    // 添加RTL类
+    if (isRTL) {
+      document.documentElement.classList.add('rtl');
+    } else {
+      document.documentElement.classList.remove('rtl');
+    }
+  }, [isRTL]);
+  
+  // RTL样式工具函数
+  const rtlStyles = {
+    // 边距调整
+    marginLeft: (value: string) => isRTL ? { marginRight: value } : { marginLeft: value },
+    marginRight: (value: string) => isRTL ? { marginLeft: value } : { marginRight: value },
+    
+    // 内边距调整
+    paddingLeft: (value: string) => isRTL ? { paddingRight: value } : { paddingLeft: value },
+    paddingRight: (value: string) => isRTL ? { paddingLeft: value } : { paddingRight: value },
+    
+    // 浮动调整
+    float: (direction: 'left' | 'right') => ({
+      float: isRTL ? (direction === 'left' ? 'right' : 'left') : direction
+    }),
+    
+    // 文本对齐调整
+    textAlign: (align: 'left' | 'right') => ({
+      textAlign: isRTL ? (align === 'left' ? 'right' : 'left') : align
+    }),
+  };
+  
+  return {
+    isRTL,
+    rtlStyles,
+    // 便捷类名
+    rtlClass: (ltrClass: string, rtlClass: string) => isRTL ? rtlClass : ltrClass,
+  };
+}
+
+// ✅ 推荐：RTL友好的Tailwind类
+export const RTL_CLASSES = {
+  // 边距
+  'ml-4': 'ml-4 rtl:mr-4 rtl:ml-0',
+  'mr-4': 'mr-4 rtl:ml-4 rtl:mr-0',
+  
+  // 内边距
+  'pl-4': 'pl-4 rtl:pr-4 rtl:pl-0',
+  'pr-4': 'pr-4 rtl:pl-4 rtl:pr-0',
+  
+  // 浮动
+  'float-left': 'float-left rtl:float-right',
+  'float-right': 'float-right rtl:float-left',
+  
+  // 文本对齐
+  'text-left': 'text-left rtl:text-right',
+  'text-right': 'text-right rtl:text-left',
+  
+  // 边框
+  'border-l': 'border-l rtl:border-r rtl:border-l-0',
+  'border-r': 'border-r rtl:border-l rtl:border-r-0',
+} as const;
+```
+
+### 3. 翻译工作流程
+
+#### 翻译键管理（推荐）
+```typescript
+// scripts/i18n-utils.ts - 翻译工具脚本
+import fs from 'fs';
+import path from 'path';
+
+// ✅ 推荐：翻译键提取工具
+export class TranslationKeyExtractor {
+  private extractedKeys = new Set<string>();
+  
+  // 从代码中提取翻译键
+  extractFromFile(filePath: string): void {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    
+    // 匹配 t('key') 和 t("key") 
+    const regex = /\bt\s*\(\s*['"`]([^'"`]+)['"`]/g;
+    let match;
+    
+    while ((match = regex.exec(content)) !== null) {
+      this.extractedKeys.add(match[1]);
+    }
+  }
+  
+  // 检查缺失的翻译键
+  checkMissingKeys(localeFile: string): string[] {
+    const translations = JSON.parse(fs.readFileSync(localeFile, 'utf-8'));
+    const existingKeys = this.flattenObject(translations);
+    
+    return Array.from(this.extractedKeys).filter(
+      key => !existingKeys.hasOwnProperty(key)
+    );
+  }
+  
+  // 生成翻译模板
+  generateTemplate(outputPath: string): void {
+    const template: Record<string, string> = {};
+    
+    Array.from(this.extractedKeys).forEach(key => {
+      this.setNestedProperty(template, key, `TODO: ${key}`);
+    });
+    
+    fs.writeFileSync(
+      outputPath, 
+      JSON.stringify(template, null, 2), 
+      'utf-8'
+    );
+  }
+  
+  private flattenObject(obj: any, prefix = ''): Record<string, any> {
+    let flattened: Record<string, any> = {};
+    
+    for (const key in obj) {
+      const newKey = prefix ? `${prefix}.${key}` : key;
+      
+      if (typeof obj[key] === 'object' && obj[key] !== null) {
+        Object.assign(flattened, this.flattenObject(obj[key], newKey));
+      } else {
+        flattened[newKey] = obj[key];
+      }
+    }
+    
+    return flattened;
+  }
+  
+  private setNestedProperty(obj: any, path: string, value: any): void {
+    const keys = path.split('.');
+    let current = obj;
+    
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (!(keys[i] in current)) {
+        current[keys[i]] = {};
+      }
+      current = current[keys[i]];
+    }
+    
+    current[keys[keys.length - 1]] = value;
+  }
+}
+```
+
+---
+
+## 📋 国际化开发检查清单
+
+### 配置完成检查
+
+- [ ] **语言支持**: 所有目标语言都有完整的翻译文件
+- [ ] **命名空间**: 翻译键按功能模块合理组织
+- [ ] **格式化**: 数字、日期、货币格式符合地区习惯
+- [ ] **复数规则**: 正确处理不同语言的复数形式
+
+### 用户体验检查
+
+- [ ] **语言切换**: 语言切换功能正常，状态持久化
+- [ ] **RTL支持**: 从右到左语言的布局正确
+- [ ] **字体支持**: 所有语言的字体显示正常
+- [ ] **文本长度**: 不同语言的文本长度适配良好
+
+### 开发工作流检查
+
+- [ ] **翻译完整性**: 没有缺失的翻译键
+- [ ] **翻译质量**: 翻译准确、符合语言习惯
+- [ ] **更新机制**: 新功能的翻译及时更新
+- [ ] **测试覆盖**: 各语言版本功能测试通过
+
+### 性能优化检查
+
+- [ ] **懒加载**: 翻译文件按需加载
+- [ ] **缓存机制**: 合理缓存翻译资源
+- [ ] **包大小**: 翻译文件不会显著增加包体积
+- [ ] **加载速度**: 语言切换响应迅速
+
+---
+
+**适用项目**: BiuBiuStar社交平台国际化  
+**更新频率**: 新增语言支持时同步更新  
+**强制执行**: P0级规则必须100%遵循，P1级规则建议90%以上遵循

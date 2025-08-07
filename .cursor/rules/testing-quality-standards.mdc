@@ -1,0 +1,966 @@
+---
+alwaysApply: intelligently
+description: 测试质量保证专用规范，包含单元测试、集成测试、E2E测试、测试驱动开发。适用于测试编写、质量保证、自动化测试等场景。
+triggerWords: ["test", "testing", "jest", "vitest", "cypress", "playwright", "unit", "integration", "e2e", "tdd", "coverage", "mock"]
+---
+
+# 测试质量保证规范
+
+> **测试框架**: Vitest + Testing Library + Playwright + Jest  
+> **适用项目**: BiuBiuStar社交平台 - 全栈测试策略
+
+---
+
+## 🔥 测试架构强制规则（P0级）
+
+### 1. 测试金字塔策略（强制）
+
+#### 测试层级分布（强制比例）
+```typescript
+// ✅ 强制：测试金字塔比例
+export const TEST_PYRAMID = {
+  // 70% - 单元测试（快速、稳定、细粒度）
+  unit: {
+    percentage: 70,
+    types: ['函数测试', '组件测试', 'Hook测试', '工具函数测试'],
+    tools: ['Vitest', 'Testing Library'],
+    execution: '毫秒级',
+  },
+  
+  // 20% - 集成测试（模块间交互）
+  integration: {
+    percentage: 20,
+    types: ['API测试', '数据库测试', '服务集成', '页面交互'],
+    tools: ['Vitest', 'Supertest', 'MSW'],
+    execution: '秒级',
+  },
+  
+  // 10% - E2E测试（端到端用户流程）
+  e2e: {
+    percentage: 10,
+    types: ['用户旅程', '关键业务流程', '跨浏览器测试'],
+    tools: ['Playwright', 'Cypress'],
+    execution: '分钟级',
+  },
+} as const;
+
+// ✅ 强制：测试文件组织结构
+const testStructure = `
+src/
+├── __tests__/              # 全局测试配置
+│   ├── setup.ts
+│   ├── mocks/
+│   └── fixtures/
+├── components/
+│   ├── Button/
+│   │   ├── Button.tsx
+│   │   ├── Button.test.tsx # 单元测试
+│   │   └── Button.stories.tsx
+│   └── PostCard/
+│       ├── PostCard.tsx
+│       ├── PostCard.test.tsx
+│       └── PostCard.integration.test.tsx
+├── hooks/
+│   ├── useAuth.ts
+│   └── useAuth.test.ts
+├── utils/
+│   ├── format.ts
+│   └── format.test.ts
+api/
+├── __tests__/
+│   ├── setup.ts
+│   └── helpers/
+├── routes/
+│   ├── auth.ts
+│   └── auth.test.ts
+└── services/
+    ├── AuthService.ts
+    └── AuthService.test.ts
+tests/
+├── e2e/                    # E2E测试
+│   ├── auth.spec.ts
+│   ├── posts.spec.ts
+│   └── user-journey.spec.ts
+└── integration/            # 集成测试
+    ├── api/
+    └── database/
+`;
+```
+
+### 2. 前端单元测试标准
+
+#### React组件测试（强制）
+```typescript
+// ✅ 强制：组件测试模板
+// src/components/Button/Button.test.tsx
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { Button } from './Button';
+
+// ✅ 强制：测试组织结构
+describe('Button Component', () => {
+  // ✅ 强制：基础渲染测试
+  describe('Rendering', () => {
+    it('should render with default props', () => {
+      render(<Button>Click me</Button>);
+      
+      const button = screen.getByRole('button', { name: /click me/i });
+      expect(button).toBeInTheDocument();
+      expect(button).toHaveClass('btn-primary');
+    });
+    
+    it('should render different variants', () => {
+      const { rerender } = render(<Button variant="secondary">Test</Button>);
+      expect(screen.getByRole('button')).toHaveClass('btn-secondary');
+      
+      rerender(<Button variant="outline">Test</Button>);
+      expect(screen.getByRole('button')).toHaveClass('btn-outline');
+    });
+    
+    it('should render different sizes', () => {
+      const { rerender } = render(<Button size="sm">Test</Button>);
+      expect(screen.getByRole('button')).toHaveClass('btn-sm');
+      
+      rerender(<Button size="lg">Test</Button>);
+      expect(screen.getByRole('button')).toHaveClass('btn-lg');
+    });
+  });
+  
+  // ✅ 强制：交互行为测试
+  describe('Interactions', () => {
+    it('should handle click events', async () => {
+      const handleClick = vi.fn();
+      const user = userEvent.setup();
+      
+      render(<Button onClick={handleClick}>Click me</Button>);
+      
+      await user.click(screen.getByRole('button'));
+      expect(handleClick).toHaveBeenCalledTimes(1);
+    });
+    
+    it('should not trigger click when disabled', async () => {
+      const handleClick = vi.fn();
+      const user = userEvent.setup();
+      
+      render(<Button onClick={handleClick} disabled>Click me</Button>);
+      
+      await user.click(screen.getByRole('button'));
+      expect(handleClick).not.toHaveBeenCalled();
+    });
+    
+    it('should handle loading state', () => {
+      render(<Button isLoading>Click me</Button>);
+      
+      const button = screen.getByRole('button');
+      expect(button).toBeDisabled();
+      expect(screen.getByLabelText(/loading/i)).toBeInTheDocument();
+    });
+  });
+  
+  // ✅ 强制：可访问性测试
+  describe('Accessibility', () => {
+    it('should have correct ARIA attributes', () => {
+      render(<Button aria-describedby="help-text">Submit</Button>);
+      
+      const button = screen.getByRole('button');
+      expect(button).toHaveAttribute('aria-describedby', 'help-text');
+    });
+    
+    it('should support keyboard navigation', async () => {
+      const handleClick = vi.fn();
+      const user = userEvent.setup();
+      
+      render(<Button onClick={handleClick}>Click me</Button>);
+      
+      const button = screen.getByRole('button');
+      button.focus();
+      
+      await user.keyboard('{Enter}');
+      expect(handleClick).toHaveBeenCalledTimes(1);
+      
+      await user.keyboard(' ');
+      expect(handleClick).toHaveBeenCalledTimes(2);
+    });
+  });
+  
+  // ✅ 强制：边界条件测试
+  describe('Edge Cases', () => {
+    it('should handle extremely long text', () => {
+      const longText = 'A'.repeat(1000);
+      render(<Button>{longText}</Button>);
+      
+      expect(screen.getByRole('button')).toBeInTheDocument();
+    });
+    
+    it('should handle special characters in children', () => {
+      render(<Button>{"<script>alert('xss')</script>"}</Button>);
+      
+      expect(screen.getByRole('button')).toHaveTextContent("<script>alert('xss')</script>");
+    });
+  });
+});
+```
+
+#### Custom Hook测试（强制）
+```typescript
+// ✅ 强制：Hook测试模板
+// src/hooks/useAuth.test.ts
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { vi } from 'vitest';
+import { useAuth } from './useAuth';
+import * as authAPI from '@/api/auth';
+
+// ✅ 强制：Mock外部依赖
+vi.mock('@/api/auth', () => ({
+  login: vi.fn(),
+  logout: vi.fn(),
+  getCurrentUser: vi.fn(),
+}));
+
+describe('useAuth Hook', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+  
+  // ✅ 强制：初始状态测试
+  describe('Initial State', () => {
+    it('should have correct initial state', () => {
+      const { result } = renderHook(() => useAuth());
+      
+      expect(result.current.user).toBeNull();
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.isAuthenticated).toBe(false);
+    });
+    
+    it('should restore user from localStorage', async () => {
+      const mockUser = { id: '1', email: 'test@example.com' };
+      localStorage.setItem('token', 'valid-token');
+      vi.mocked(authAPI.getCurrentUser).mockResolvedValue(mockUser);
+      
+      const { result } = renderHook(() => useAuth());
+      
+      expect(result.current.isLoading).toBe(true);
+      
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+        expect(result.current.user).toEqual(mockUser);
+        expect(result.current.isAuthenticated).toBe(true);
+      });
+    });
+  });
+  
+  // ✅ 强制：异步操作测试
+  describe('Authentication Actions', () => {
+    it('should handle successful login', async () => {
+      const mockCredentials = { email: 'test@example.com', password: 'password' };
+      const mockResponse = {
+        user: { id: '1', email: 'test@example.com' },
+        token: 'jwt-token'
+      };
+      
+      vi.mocked(authAPI.login).mockResolvedValue(mockResponse);
+      
+      const { result } = renderHook(() => useAuth());
+      
+      await act(async () => {
+        await result.current.login(mockCredentials);
+      });
+      
+      expect(result.current.user).toEqual(mockResponse.user);
+      expect(result.current.isAuthenticated).toBe(true);
+      expect(localStorage.getItem('token')).toBe('jwt-token');
+    });
+    
+    it('should handle login failure', async () => {
+      const mockError = new Error('Invalid credentials');
+      vi.mocked(authAPI.login).mockRejectedValue(mockError);
+      
+      const { result } = renderHook(() => useAuth());
+      
+      await act(async () => {
+        try {
+          await result.current.login({ email: 'test@example.com', password: 'wrong' });
+        } catch (error) {
+          expect(error).toBe(mockError);
+        }
+      });
+      
+      expect(result.current.user).toBeNull();
+      expect(result.current.isAuthenticated).toBe(false);
+    });
+    
+    it('should handle logout', async () => {
+      // 首先设置登录状态
+      localStorage.setItem('token', 'jwt-token');
+      const { result } = renderHook(() => useAuth());
+      
+      await act(async () => {
+        result.current.logout();
+      });
+      
+      expect(result.current.user).toBeNull();
+      expect(result.current.isAuthenticated).toBe(false);
+      expect(localStorage.getItem('token')).toBeNull();
+    });
+  });
+});
+```
+
+### 3. 后端API测试标准
+
+#### Express路由测试（强制）
+```typescript
+// ✅ 强制：API路由测试模板
+// api/routes/auth.test.ts
+import request from 'supertest';
+import { vi } from 'vitest';
+import { app } from '../app';
+import * as authService from '../services/AuthService';
+import { createTestUser, cleanupTestData } from '../__tests__/helpers';
+
+// ✅ 强制：Mock服务层
+vi.mock('../services/AuthService');
+
+describe('POST /api/auth/login', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+  
+  afterEach(async () => {
+    await cleanupTestData();
+  });
+  
+  // ✅ 强制：成功路径测试
+  describe('Success Cases', () => {
+    it('should login with valid credentials', async () => {
+      const mockUser = { id: '1', email: 'test@example.com', role: 'user' };
+      const mockToken = 'jwt-token';
+      
+      vi.mocked(authService.login).mockResolvedValue({
+        user: mockUser,
+        token: mockToken
+      });
+      
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'test@example.com',
+          password: 'password123'
+        })
+        .expect(200);
+      
+      expect(response.body).toEqual({
+        success: true,
+        data: {
+          user: mockUser,
+          token: mockToken
+        }
+      });
+    });
+  });
+  
+  // ✅ 强制：失败路径测试
+  describe('Error Cases', () => {
+    it('should return 400 for missing email', async () => {
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          password: 'password123'
+        })
+        .expect(400);
+      
+      expect(response.body.success).toBe(false);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    });
+    
+    it('should return 401 for invalid credentials', async () => {
+      vi.mocked(authService.login).mockRejectedValue(
+        new Error('Invalid credentials')
+      );
+      
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'test@example.com',
+          password: 'wrong-password'
+        })
+        .expect(401);
+      
+      expect(response.body.success).toBe(false);
+    });
+    
+    it('should handle rate limiting', async () => {
+      // 发送多个请求触发限流
+      const requests = Array(6).fill(null).map(() =>
+        request(app)
+          .post('/api/auth/login')
+          .send({
+            email: 'test@example.com',
+            password: 'password123'
+          })
+      );
+      
+      const responses = await Promise.all(requests);
+      const lastResponse = responses[responses.length - 1];
+      
+      expect(lastResponse.status).toBe(429);
+    });
+  });
+  
+  // ✅ 强制：安全性测试
+  describe('Security Tests', () => {
+    it('should reject SQL injection attempts', async () => {
+      const maliciousEmail = "'; DROP TABLE users; --";
+      
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: maliciousEmail,
+          password: 'password123'
+        })
+        .expect(400);
+      
+      expect(response.body.success).toBe(false);
+    });
+    
+    it('should reject XSS attempts', async () => {
+      const xssPayload = "<script>alert('xss')</script>";
+      
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: xssPayload,
+          password: 'password123'
+        })
+        .expect(400);
+      
+      expect(response.body.success).toBe(false);
+    });
+  });
+});
+```
+
+#### 数据库集成测试（强制）
+```typescript
+// ✅ 强制：数据库测试模板
+// api/services/AuthService.test.ts
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { AuthService } from './AuthService';
+import { supabase } from '../config/supabase';
+import { createTestUser, cleanupTestUsers } from '../__tests__/helpers';
+
+describe('AuthService Integration Tests', () => {
+  let authService: AuthService;
+  
+  beforeEach(() => {
+    authService = new AuthService();
+  });
+  
+  afterEach(async () => {
+    await cleanupTestUsers();
+  });
+  
+  // ✅ 强制：数据库操作测试
+  describe('User Registration', () => {
+    it('should create new user successfully', async () => {
+      const userData = {
+        email: 'newuser@example.com',
+        username: 'newuser',
+        password: 'securePassword123!'
+      };
+      
+      const result = await authService.register(userData);
+      
+      expect(result.user).toBeDefined();
+      expect(result.user.email).toBe(userData.email);
+      expect(result.user.username).toBe(userData.username);
+      expect(result.token).toBeDefined();
+      
+      // 验证用户确实存在于数据库中
+      const { data: dbUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', userData.email)
+        .single();
+      
+      expect(dbUser).toBeDefined();
+      expect(dbUser.email).toBe(userData.email);
+    });
+    
+    it('should reject duplicate email', async () => {
+      const existingUser = await createTestUser({
+        email: 'existing@example.com'
+      });
+      
+      await expect(
+        authService.register({
+          email: 'existing@example.com',
+          username: 'newuser',
+          password: 'password123!'
+        })
+      ).rejects.toThrow('Email already exists');
+    });
+  });
+  
+  // ✅ 强制：事务测试
+  describe('Database Transactions', () => {
+    it('should rollback on partial failure', async () => {
+      const userData = {
+        email: 'test@example.com',
+        username: 'testuser',
+        password: 'password123!'
+      };
+      
+      // 模拟在用户创建后的profile创建失败
+      const originalCreateProfile = authService.createUserProfile;
+      authService.createUserProfile = vi.fn().mockRejectedValue(
+        new Error('Profile creation failed')
+      );
+      
+      await expect(
+        authService.register(userData)
+      ).rejects.toThrow('Profile creation failed');
+      
+      // 验证用户没有被创建（事务回滚）
+      const { data: user } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', userData.email)
+        .single();
+      
+      expect(user).toBeNull();
+      
+      // 恢复原始方法
+      authService.createUserProfile = originalCreateProfile;
+    });
+  });
+});
+```
+
+---
+
+## ⚡ E2E测试强制规则（P0级）
+
+### 1. Playwright E2E测试
+
+#### 用户流程测试（强制）
+```typescript
+// ✅ 强制：E2E测试模板
+// tests/e2e/auth.spec.ts
+import { test, expect, type Page } from '@playwright/test';
+
+// ✅ 强制：测试数据管理
+const TEST_USER = {
+  email: 'e2e.test@example.com',
+  password: 'E2eTestPassword123!',
+  username: 'e2etestuser'
+};
+
+// ✅ 强制：页面对象模式
+class LoginPage {
+  constructor(private page: Page) {}
+  
+  async goto() {
+    await this.page.goto('/login');
+  }
+  
+  async fillEmail(email: string) {
+    await this.page.fill('[data-testid="email-input"]', email);
+  }
+  
+  async fillPassword(password: string) {
+    await this.page.fill('[data-testid="password-input"]', password);
+  }
+  
+  async clickLogin() {
+    await this.page.click('[data-testid="login-button"]');
+  }
+  
+  async login(email: string, password: string) {
+    await this.fillEmail(email);
+    await this.fillPassword(password);
+    await this.clickLogin();
+  }
+  
+  async getErrorMessage() {
+    return await this.page.textContent('[data-testid="error-message"]');
+  }
+}
+
+test.describe('Authentication Flow', () => {
+  let loginPage: LoginPage;
+  
+  test.beforeEach(async ({ page }) => {
+    loginPage = new LoginPage(page);
+  });
+  
+  // ✅ 强制：关键用户流程测试
+  test('successful login flow', async ({ page }) => {
+    await loginPage.goto();
+    
+    // 验证登录页面元素
+    await expect(page.locator('[data-testid="login-form"]')).toBeVisible();
+    await expect(page.locator('[data-testid="email-input"]')).toBeVisible();
+    await expect(page.locator('[data-testid="password-input"]')).toBeVisible();
+    
+    // 执行登录
+    await loginPage.login(TEST_USER.email, TEST_USER.password);
+    
+    // 验证登录成功
+    await expect(page).toHaveURL('/');
+    await expect(page.locator('[data-testid="user-menu"]')).toBeVisible();
+    
+    // 验证用户信息显示
+    const userMenu = page.locator('[data-testid="user-menu"]');
+    await userMenu.click();
+    await expect(page.locator('[data-testid="username"]')).toContainText(TEST_USER.username);
+  });
+  
+  test('failed login with invalid credentials', async ({ page }) => {
+    await loginPage.goto();
+    
+    await loginPage.login('invalid@example.com', 'wrongpassword');
+    
+    // 验证错误信息显示
+    await expect(page.locator('[data-testid="error-message"]')).toBeVisible();
+    await expect(page.locator('[data-testid="error-message"]')).toContainText('Invalid credentials');
+    
+    // 验证仍在登录页面
+    await expect(page).toHaveURL('/login');
+  });
+  
+  // ✅ 强制：表单验证测试
+  test('form validation', async ({ page }) => {
+    await loginPage.goto();
+    
+    // 测试空表单提交
+    await loginPage.clickLogin();
+    await expect(page.locator('[data-testid="email-error"]')).toContainText('Email is required');
+    await expect(page.locator('[data-testid="password-error"]')).toContainText('Password is required');
+    
+    // 测试无效邮箱格式
+    await loginPage.fillEmail('invalid-email');
+    await loginPage.clickLogin();
+    await expect(page.locator('[data-testid="email-error"]')).toContainText('Invalid email format');
+  });
+  
+  // ✅ 强制：可访问性测试
+  test('accessibility compliance', async ({ page }) => {
+    await loginPage.goto();
+    
+    // 键盘导航测试
+    await page.keyboard.press('Tab');
+    await expect(page.locator('[data-testid="email-input"]')).toBeFocused();
+    
+    await page.keyboard.press('Tab');
+    await expect(page.locator('[data-testid="password-input"]')).toBeFocused();
+    
+    await page.keyboard.press('Tab');
+    await expect(page.locator('[data-testid="login-button"]')).toBeFocused();
+    
+    // 回车键提交测试
+    await loginPage.fillEmail(TEST_USER.email);
+    await loginPage.fillPassword(TEST_USER.password);
+    await page.keyboard.press('Enter');
+    
+    await expect(page).toHaveURL('/');
+  });
+});
+```
+
+#### 跨浏览器测试配置（强制）
+```typescript
+// ✅ 强制：Playwright配置
+// playwright.config.ts
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './tests/e2e',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: [
+    ['html'],
+    ['json', { outputFile: 'test-results/results.json' }],
+    ['junit', { outputFile: 'test-results/junit.xml' }],
+  ],
+  
+  use: {
+    baseURL: process.env.BASE_URL || 'http://localhost:5173',
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+  },
+  
+  // ✅ 强制：多浏览器测试配置
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+    {
+      name: 'mobile-chrome',
+      use: { ...devices['Pixel 5'] },
+    },
+    {
+      name: 'mobile-safari',
+      use: { ...devices['iPhone 12'] },
+    },
+  ],
+  
+  // ✅ 强制：测试服务器配置
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:5173',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000,
+  },
+});
+```
+
+---
+
+## 🛠️ 测试工具配置（P1级）
+
+### 1. Mock策略
+
+#### MSW (Mock Service Worker) 配置（推荐）
+```typescript
+// ✅ 推荐：MSW mock配置
+// src/__tests__/mocks/handlers.ts
+import { http, HttpResponse } from 'msw';
+
+export const handlers = [
+  // ✅ 认证相关Mock
+  http.post('/api/auth/login', async ({ request }) => {
+    const body = await request.json() as { email: string; password: string };
+    
+    if (body.email === 'test@example.com' && body.password === 'password123') {
+      return HttpResponse.json({
+        success: true,
+        data: {
+          user: {
+            id: '1',
+            email: 'test@example.com',
+            username: 'testuser',
+            role: 'user'
+          },
+          token: 'mock-jwt-token'
+        }
+      });
+    }
+    
+    return HttpResponse.json(
+      {
+        success: false,
+        error: { code: 'INVALID_CREDENTIALS' },
+        message: 'Invalid email or password'
+      },
+      { status: 401 }
+    );
+  }),
+  
+  // ✅ 帖子相关Mock
+  http.get('/api/posts', ({ request }) => {
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const limit = parseInt(url.searchParams.get('limit') || '10');
+    
+    const mockPosts = Array.from({ length: limit }, (_, index) => ({
+      id: `post-${page}-${index + 1}`,
+      title: `Mock Post ${page}-${index + 1}`,
+      content: 'This is a mock post content',
+      author: {
+        id: '1',
+        username: 'testuser'
+      },
+      createdAt: new Date().toISOString(),
+      likesCount: Math.floor(Math.random() * 100),
+      commentsCount: Math.floor(Math.random() * 20)
+    }));
+    
+    return HttpResponse.json({
+      success: true,
+      data: mockPosts,
+      pagination: {
+        page,
+        limit,
+        total: 100,
+        totalPages: 10
+      }
+    });
+  }),
+  
+  // ✅ 错误场景Mock
+  http.get('/api/posts/:id', ({ params }) => {
+    const { id } = params;
+    
+    if (id === 'error-post') {
+      return HttpResponse.json(
+        {
+          success: false,
+          error: { code: 'INTERNAL_ERROR' },
+          message: 'Internal server error'
+        },
+        { status: 500 }
+      );
+    }
+    
+    if (id === 'not-found') {
+      return HttpResponse.json(
+        {
+          success: false,
+          error: { code: 'NOT_FOUND' },
+          message: 'Post not found'
+        },
+        { status: 404 }
+      );
+    }
+    
+    return HttpResponse.json({
+      success: true,
+      data: {
+        id,
+        title: `Mock Post ${id}`,
+        content: 'This is a mock post content',
+        author: {
+          id: '1',
+          username: 'testuser'
+        },
+        createdAt: new Date().toISOString()
+      }
+    });
+  }),
+];
+
+// src/__tests__/setup.ts
+import { beforeAll, afterEach, afterAll } from 'vitest';
+import { setupServer } from 'msw/node';
+import { handlers } from './mocks/handlers';
+
+const server = setupServer(...handlers);
+
+beforeAll(() => {
+  server.listen();
+});
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+afterAll(() => {
+  server.close();
+});
+```
+
+### 2. 测试覆盖率配置
+
+#### Vitest覆盖率配置（推荐）
+```typescript
+// ✅ 推荐：Vitest配置
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/__tests__/setup.ts'],
+    
+    // ✅ 覆盖率配置
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov', 'json'],
+      exclude: [
+        'node_modules/',
+        'src/__tests__/',
+        '**/*.d.ts',
+        '**/*.config.*',
+        '**/types.ts',
+        'src/main.tsx',
+        'src/vite-env.d.ts',
+      ],
+      // ✅ 强制：覆盖率阈值
+      thresholds: {
+        global: {
+          statements: 80,
+          branches: 75,
+          functions: 80,
+          lines: 80,
+        },
+        // 关键模块更高要求
+        'src/utils/': {
+          statements: 95,
+          branches: 90,
+          functions: 95,
+          lines: 95,
+        },
+        'src/hooks/': {
+          statements: 90,
+          branches: 85,
+          functions: 90,
+          lines: 90,
+        },
+      },
+    },
+  },
+  
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+});
+```
+
+---
+
+## 📋 测试质量检查清单
+
+### 单元测试完成检查
+
+- [ ] **测试覆盖率**: 关键模块覆盖率达到90%以上
+- [ ] **测试组织**: 测试按功能模块清晰组织
+- [ ] **Mock使用**: 外部依赖正确Mock，测试隔离
+- [ ] **边界测试**: 包含正常、异常、边界条件测试
+
+### 集成测试完成检查
+
+- [ ] **API测试**: 所有API端点有集成测试
+- [ ] **数据库测试**: 数据库操作有集成测试
+- [ ] **服务集成**: 服务间交互测试完整
+- [ ] **错误处理**: 异常情况处理测试覆盖
+
+### E2E测试完成检查
+
+- [ ] **用户流程**: 关键用户旅程测试覆盖
+- [ ] **跨浏览器**: 主流浏览器兼容性测试
+- [ ] **移动端**: 移动设备响应式测试
+- [ ] **可访问性**: 键盘导航和屏幕阅读器测试
+
+### 测试性能检查
+
+- [ ] **执行速度**: 单元测试秒级完成，E2E测试分钟级完成
+- [ ] **并行执行**: 测试支持并行执行
+- [ ] **CI集成**: 测试在CI/CD管道中正常运行
+- [ ] **报告生成**: 测试结果和覆盖率报告完整
+
+---
+
+**适用项目**: BiuBiuStar社交平台测试质量保证  
+**更新频率**: 测试框架升级时同步更新  
+**强制执行**: P0级规则必须100%遵循，P1级规则建议85%以上遵循

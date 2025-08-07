@@ -1,0 +1,895 @@
+---
+alwaysApply: intelligently
+description: 全栈社交平台开发专用规范，包含项目架构、数据流设计、认证授权、性能监控。适用于全栈开发、系统架构、项目管理等场景。
+triggerWords: ["fullstack", "architecture", "platform", "project", "system", "deployment", "monitoring", "performance", "scalability"]
+---
+## 🛡️ 安全架构强制规则（P0级）
+
+### 1. 认证授权流程（强制实现）
+
+#### JWT认证流程
+```typescript
+// ✅ 强制：完整认证流程
+// 1. 前端登录 -> 2. 后端验证 -> 3. 返回JWT -> 4. 前端存储 -> 5. 后续请求携带
+
+// 前端认证Context
+interface AuthContextType {
+  user: User | null;
+  token: string | null;
+  isLoading: boolean;
+  login: (credentials: LoginCredentials) => Promise<void>;
+  logout: () => void;
+  refreshToken: () => Promise<void>;
+}
+
+export const AuthContext = createContext<AuthContextType | null>(null);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(
+    localStorage.getItem('token')
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // ✅ 强制：登录方法
+  const login = async (credentials: LoginCredentials) => {
+    setIsLoading(true);
+    try {
+      const response = await api.post<{
+        user: User;
+        token: string;
+        refreshToken: string;
+      }>('/auth/login', credentials);
+      
+      if (response.data) {
+        const { user, token, refreshToken } = response.data;
+        
+        setUser(user);
+        setToken(token);
+        
+        // ✅ 强制：安全存储token
+        localStorage.setItem('token', token);
+        localStorage.setItem('refreshToken', refreshToken);
+        
+        // 设置自动刷新
+        scheduleTokenRefresh(token);
+      }
+    } catch (error) {
+      console.error('登录失败:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // ✅ 强制：token刷新逻辑
+  const refreshToken = async () => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      logout();
+      return;
+    }
+    
+    try {
+      const response = await api.post<{
+        token: string;
+        refreshToken: string;
+      }>('/auth/refresh', { refreshToken });
+      
+      if (response.data) {
+        const { token: newToken, refreshToken: newRefreshToken } = response.data;
+        
+        setToken(newToken);
+        localStorage.setItem('token', newToken);
+        localStorage.setItem('refreshToken', newRefreshToken);
+        
+        scheduleTokenRefresh(newToken);
+      }
+    } catch (error) {
+      console.error('刷新token失败:', error);
+      logout();
+    }
+  };
+  
+  // ✅ 强制：登出方法
+  const logout = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    
+    // 清理定时器
+    clearTokenRefreshTimeout();
+  };
+  
+  // ✅ 强制：初始化时验证token
+  useEffect(() => {
+    const initAuth = async () => {
+      const storedToken = localStorage.getItem('token');
+      
+      if (storedToken) {
+        try {
+          // 验证token并获取用户信息
+          const response = await api.get<User>('/auth/me');
+          if (response.data) {
+            setUser(response.data);
+            scheduleTokenRefresh(storedToken);
+          } else {
+            logout();
+          }
+        } catch (error) {
+          console.error('验证token失败:', error);
+          logout();
+        }
+      }
+      
+      setIsLoading(false);
+    };
+    
+    initAuth();
+  }, []);
+  
+  return (
+    <AuthContext.Provider value={{
+      user,
+      token,
+      isLoading,
+      login,
+      logout,
+      refreshToken
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+```
+
+### 2. 权限控制强制实现
+
+#### 基于角色的访问控制(RBAC)
+```typescript
+// ✅ 强制：权限枚举定义
+export enum Permission {
+  // 用户权限
+  READ_USERS = 'read:users',
+  UPDATE_PROFILE = 'update:profile',
+  DELETE_ACCOUNT = 'delete:account',
+  
+  // 内容权限
+  CREATE_POST = 'create:post',
+  UPDATE_POST = 'update:post',
+  DELETE_POST = 'delete:post',
+  MODERATE_POST = 'moderate:post',
+  
+  // 管理权限
+  MANAGE_USERS = 'manage:users',
+  MANAGE_CONTENT = 'manage:content',
+  VIEW_ANALYTICS = 'view:analytics',
+  SYSTEM_CONFIG = 'system:config',
+}
+
+// ✅ 强制：角色权限映射
+export const RolePermissions: Record<UserRole, Permission[]> = {
+  user: [
+    Permission.READ_USERS,
+    Permission.UPDATE_PROFILE,
+    Permission.DELETE_ACCOUNT,
+    Permission.CREATE_POST,
+    Permission.UPDATE_POST,
+    Permission.DELETE_POST,
+  ],
+  moderator: [
+    ...RolePermissions.user,
+    Permission.MODERATE_POST,
+    Permission.MANAGE_CONTENT,
+  ],
+  admin: [
+    ...RolePermissions.moderator,
+    Permission.MANAGE_USERS,
+    Permission.VIEW_ANALYTICS,
+  ],
+  super_admin: [
+    ...RolePermissions.admin,
+    Permission.SYSTEM_CONFIG,
+  ],
+};
+
+// ✅ 强制：权限检查Hook
+export function usePermission() {
+  const { user } = useAuth();
+  
+  const hasPermission = useCallback((permission: Permission): boolean => {
+    if (!user || !user.role) return false;
+    
+    const rolePermissions = RolePermissions[user.role];
+    return rolePermissions.includes(permission);
+  }, [user]);
+  
+  const hasAnyPermission = useCallback((permissions: Permission[]): boolean => {
+    return permissions.some(permission => hasPermission(permission));
+  }, [hasPermission]);
+  
+  const hasAllPermissions = useCallback((permissions: Permission[]): boolean => {
+    return permissions.every(permission => hasPermission(permission));
+  }, [hasPermission]);
+  
+  return {
+    hasPermission,
+    hasAnyPermission,
+    hasAllPermissions,
+  };
+}
+
+// ✅ 强制：权限保护组件
+interface ProtectedComponentProps {
+  permission: Permission | Permission[];
+  fallback?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+export function ProtectedComponent({ 
+  permission, 
+  fallback = null, 
+  children 
+}: ProtectedComponentProps) {
+  const { hasPermission, hasAnyPermission } = usePermission();
+  
+  const isAuthorized = Array.isArray(permission)
+    ? hasAnyPermission(permission)
+    : hasPermission(permission);
+  
+  if (!isAuthorized) {
+    return <>{fallback}</>;
+  }
+  
+  return <>{children}</>;
+}
+```
+
+#### 路由权限保护
+```typescript
+// ✅ 强制：路由保护组件
+interface ProtectedRouteProps {
+  permission?: Permission | Permission[];
+  requireAuth?: boolean;
+  redirectTo?: string;
+  children: React.ReactNode;
+}
+
+export function ProtectedRoute({
+  permission,
+  requireAuth = true,
+  redirectTo = '/login',
+  children
+}: ProtectedRouteProps) {
+  const { user, isLoading } = useAuth();
+  const { hasPermission, hasAnyPermission } = usePermission();
+  
+  if (isLoading) {
+    return <PageLoader />;
+  }
+  
+  // 检查认证
+  if (requireAuth && !user) {
+    return <Navigate to={redirectTo} replace />;
+  }
+  
+  // 检查权限
+  if (permission) {
+    const isAuthorized = Array.isArray(permission)
+      ? hasAnyPermission(permission)
+      : hasPermission(permission);
+    
+    if (!isAuthorized) {
+      return <Navigate to="/unauthorized" replace />;
+    }
+  }
+  
+  return <>{children}</>;
+}
+
+// ✅ 强制：路由配置
+export function AppRoutes() {
+  return (
+    <Routes>
+      {/* 公开路由 */}
+      <Route path="/" element={<Home />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      
+      {/* 认证路由 */}
+      <Route path="/profile" element={
+        <ProtectedRoute>
+          <Profile />
+        </ProtectedRoute>
+      } />
+      
+      <Route path="/create" element={
+        <ProtectedRoute permission={Permission.CREATE_POST}>
+          <CreatePost />
+        </ProtectedRoute>
+      } />
+      
+      {/* 管理路由 */}
+      <Route path="/admin/*" element={
+        <ProtectedRoute permission={[Permission.MANAGE_USERS, Permission.MANAGE_CONTENT]}>
+          <AdminRoutes />
+        </ProtectedRoute>
+      } />
+      
+      {/* 404 */}
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+}
+```
+
+---
+
+## 🚀 性能优化强制规则（P1级）
+
+### 1. 前端性能优化
+
+#### 代码分割与懒加载（强制实现）
+```typescript
+// ✅ 强制：页面级别代码分割
+const HomePage = lazy(() => import('@/pages/Home'));
+const ProfilePage = lazy(() => import('@/pages/Profile'));
+const AdminPage = lazy(() => import('@/pages/Admin'));
+
+// ✅ 强制：组件级别懒加载（大型组件）
+const PostEditor = lazy(() => import('@/components/PostEditor'));
+const MediaViewer = lazy(() => import('@/components/MediaViewer'));
+
+// ✅ 强制：第三方库动态导入
+const loadChartLibrary = async () => {
+  const { Chart } = await import('chart.js');
+  return Chart;
+};
+
+// ✅ 强制：预加载关键路由
+export function useRoutePreloading() {
+  useEffect(() => {
+    // 预加载用户可能访问的页面
+    const timer = setTimeout(() => {
+      import('@/pages/Profile');
+      import('@/pages/CreatePost');
+    }, 2000);
+    
+    return () => clearTimeout(timer);
+  }, []);
+}
+```
+
+#### 图片优化策略（强制实现）
+```typescript
+// ✅ 强制：响应式图片组件
+interface OptimizedImageProps {
+  src: string;
+  alt: string;
+  width?: number;
+  height?: number;
+  className?: string;
+  loading?: 'lazy' | 'eager';
+  priority?: boolean;
+}
+
+export function OptimizedImage({
+  src,
+  alt,
+  width,
+  height,
+  className,
+  loading = 'lazy',
+  priority = false,
+}: OptimizedImageProps) {
+  const [imageSrc, setImageSrc] = useState<string>();
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(false);
+  
+  useEffect(() => {
+    if (src) {
+      // ✅ 强制：生成响应式图片URL
+      const optimizedSrc = generateOptimizedImageUrl(src, { width, height });
+      setImageSrc(optimizedSrc);
+    }
+  }, [src, width, height]);
+  
+  const handleLoad = () => {
+    setIsLoading(false);
+  };
+  
+  const handleError = () => {
+    setError(true);
+    setIsLoading(false);
+  };
+  
+  if (error) {
+    return (
+      <div className={`bg-gray-200 flex items-center justify-center ${className}`}>
+        <span className="text-gray-400">图片加载失败</span>
+      </div>
+    );
+  }
+  
+  return (
+    <div className={`relative ${className}`}>
+      {isLoading && (
+        <div className="absolute inset-0 bg-gray-200 animate-pulse" />
+      )}
+      <img
+        src={imageSrc}
+        alt={alt}
+        width={width}
+        height={height}
+        loading={priority ? 'eager' : loading}
+        className={`transition-opacity duration-300 ${
+          isLoading ? 'opacity-0' : 'opacity-100'
+        }`}
+        onLoad={handleLoad}
+        onError={handleError}
+      />
+    </div>
+  );
+}
+
+// ✅ 强制：图片URL优化函数
+function generateOptimizedImageUrl(
+  src: string, 
+  options: { width?: number; height?: number; quality?: number }
+): string {
+  const { width, height, quality = 80 } = options;
+  
+  // 如果是Supabase存储的图片，添加变换参数
+  if (src.includes('supabase')) {
+    const url = new URL(src);
+    if (width) url.searchParams.set('width', width.toString());
+    if (height) url.searchParams.set('height', height.toString());
+    url.searchParams.set('quality', quality.toString());
+    return url.toString();
+  }
+  
+  return src;
+}
+```
+
+### 2. 后端性能优化
+
+#### 数据库查询优化（强制实现）
+```typescript
+// ✅ 强制：分页查询优化
+export class PostService {
+  async getPostsWithOptimization(options: {
+    page: number;
+    limit: number;
+    userId?: string;
+    includeUserData?: boolean;
+  }): Promise<{ posts: Post[]; total: number }> {
+    const { page, limit, userId, includeUserData = true } = options;
+    const offset = (page - 1) * limit;
+    
+    // ✅ 强制：使用索引优化的查询
+    let query = supabase
+      .from('posts')
+      .select(
+        includeUserData 
+          ? `
+            *,
+            user:user_id!inner (
+              id,
+              username,
+              display_name,
+              avatar_url,
+              is_verified
+            )
+          `
+          : '*',
+        { count: 'exact' }
+      );
+    
+    // ✅ 强制：筛选条件优化
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+    
+    // ✅ 强制：只查询已发布的帖子
+    query = query.eq('status', 'published');
+    
+    // ✅ 强制：使用复合索引排序
+    query = query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    const { data, error, count } = await query;
+    
+    if (error) {
+      throw new DatabaseError('获取帖子列表失败', error);
+    }
+    
+    return {
+      posts: data || [],
+      total: count || 0
+    };
+  }
+  
+  // ✅ 强制：批量操作优化
+  async batchUpdatePostCounts(postIds: string[]): Promise<void> {
+    // 使用数据库函数进行批量更新
+    const { error } = await supabase.rpc('batch_update_post_counts', {
+      post_ids: postIds
+    });
+    
+    if (error) {
+      throw new DatabaseError('批量更新帖子统计失败', error);
+    }
+  }
+}
+```
+
+#### 缓存策略（强制实现）
+```typescript
+// ✅ 强制：Redis缓存集成
+export class CacheService {
+  private redis: Redis;
+  
+  constructor() {
+    this.redis = new Redis(process.env.REDIS_URL);
+  }
+  
+  // ✅ 强制：热门内容缓存
+  async getHotPosts(limit: number = 10): Promise<Post[] | null> {
+    const cacheKey = `hot_posts:${limit}`;
+    const cached = await this.redis.get(cacheKey);
+    
+    if (cached) {
+      return JSON.parse(cached);
+    }
+    
+    return null;
+  }
+  
+  async setHotPosts(posts: Post[], limit: number = 10): Promise<void> {
+    const cacheKey = `hot_posts:${limit}`;
+    await this.redis.setex(cacheKey, 300, JSON.stringify(posts)); // 5分钟缓存
+  }
+  
+  // ✅ 强制：用户数据缓存
+  async getUserProfile(userId: string): Promise<User | null> {
+    const cacheKey = `user_profile:${userId}`;
+    const cached = await this.redis.get(cacheKey);
+    
+    if (cached) {
+      return JSON.parse(cached);
+    }
+    
+    return null;
+  }
+  
+  async setUserProfile(user: User): Promise<void> {
+    const cacheKey = `user_profile:${user.id}`;
+    await this.redis.setex(cacheKey, 1800, JSON.stringify(user)); // 30分钟缓存
+  }
+  
+  // ✅ 强制：缓存失效
+  async invalidateUserCache(userId: string): Promise<void> {
+    const pattern = `user_profile:${userId}`;
+    await this.redis.del(pattern);
+  }
+}
+
+// ✅ 强制：缓存装饰器
+export function CacheResult(ttl: number = 300) {
+  return function (target: any, propertyName: string, descriptor: PropertyDescriptor) {
+    const method = descriptor.value;
+    
+    descriptor.value = async function (...args: any[]) {
+      const cacheKey = `${target.constructor.name}:${propertyName}:${JSON.stringify(args)}`;
+      const cached = await cache.get(cacheKey);
+      
+      if (cached) {
+        return cached;
+      }
+      
+      const result = await method.apply(this, args);
+      await cache.set(cacheKey, result, ttl);
+      
+      return result;
+    };
+  };
+}
+```
+
+---
+
+## 📊 监控与观测强制规则（P1级）
+
+### 1. 错误监控
+
+#### 前端错误监控（强制实现）
+```typescript
+// ✅ 强制：全局错误边界
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+  errorInfo?: ErrorInfo;
+}
+
+export class ErrorBoundary extends Component<
+  { children: ReactNode },
+  ErrorBoundaryState
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return {
+      hasError: true,
+      error,
+    };
+  }
+  
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // ✅ 强制：错误上报
+    this.reportError(error, errorInfo);
+    
+    this.setState({
+      error,
+      errorInfo,
+    });
+  }
+  
+  private reportError(error: Error, errorInfo: ErrorInfo) {
+    const errorReport = {
+      message: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack,
+      timestamp: new Date().toISOString(),
+      userAgent: navigator.userAgent,
+      url: window.location.href,
+      userId: this.getCurrentUserId(),
+    };
+    
+    // 发送到错误监控服务
+    fetch('/api/errors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(errorReport),
+    }).catch(console.error);
+  }
+  
+  private getCurrentUserId(): string | null {
+    // 从认证上下文获取用户ID
+    return localStorage.getItem('userId');
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              出现了一些问题
+            </h2>
+            <p className="text-gray-600 mb-4">
+              我们已经记录了这个错误，正在努力修复。请刷新页面重试。
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full bg-primary-600 text-white py-2 px-4 rounded-md hover:bg-primary-700"
+            >
+              刷新页面
+            </button>
+          </div>
+        </div>
+      );
+    }
+    
+    return this.props.children;
+  }
+}
+```
+
+#### 后端错误监控（强制实现）
+```typescript
+// ✅ 强制：错误收集中间件
+export const errorTracking = (
+  error: Error,
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  // ✅ 强制：错误分类
+  const errorType = classifyError(error);
+  
+  // ✅ 强制：错误上报
+  const errorReport = {
+    message: error.message,
+    stack: error.stack,
+    type: errorType,
+    timestamp: new Date().toISOString(),
+    
+    // 请求信息
+    method: req.method,
+    url: req.url,
+    headers: req.headers,
+    body: req.body,
+    params: req.params,
+    query: req.query,
+    
+    // 用户信息
+    userId: (req as any).user?.id,
+    userAgent: req.get('user-agent'),
+    ip: req.ip,
+    
+    // 服务器信息
+    nodeVersion: process.version,
+    memory: process.memoryUsage(),
+    uptime: process.uptime(),
+  };
+  
+  // 记录到日志系统
+  logger.error('API错误', errorReport);
+  
+  // 严重错误发送告警
+  if (errorType === 'CRITICAL') {
+    sendAlert(errorReport);
+  }
+  
+  next(error);
+};
+
+function classifyError(error: Error): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
+  if (error instanceof AppError) {
+    if (error.statusCode >= 500) return 'HIGH';
+    if (error.statusCode >= 400) return 'MEDIUM';
+    return 'LOW';
+  }
+  
+  // 系统错误默认为高优先级
+  return 'CRITICAL';
+}
+```
+
+### 2. 性能监控
+
+#### 关键指标监控（强制实现）
+```typescript
+// ✅ 强制：性能指标收集
+export class PerformanceMonitor {
+  private static instance: PerformanceMonitor;
+  
+  static getInstance(): PerformanceMonitor {
+    if (!PerformanceMonitor.instance) {
+      PerformanceMonitor.instance = new PerformanceMonitor();
+    }
+    return PerformanceMonitor.instance;
+  }
+  
+  // ✅ 强制：API响应时间监控
+  trackApiCall(
+    endpoint: string,
+    method: string,
+    duration: number,
+    statusCode: number
+  ): void {
+    const metric = {
+      type: 'api_call',
+      endpoint,
+      method,
+      duration,
+      statusCode,
+      timestamp: Date.now(),
+    };
+    
+    this.sendMetric(metric);
+    
+    // 慢查询告警
+    if (duration > 3000) { // 3秒
+      logger.warn('慢API调用', metric);
+    }
+  }
+  
+  // ✅ 强制：数据库查询监控
+  trackDatabaseQuery(
+    query: string,
+    duration: number,
+    rowCount: number
+  ): void {
+    const metric = {
+      type: 'database_query',
+      query: query.substring(0, 200), // 截断长查询
+      duration,
+      rowCount,
+      timestamp: Date.now(),
+    };
+    
+    this.sendMetric(metric);
+    
+    // 慢查询告警
+    if (duration > 1000) { // 1秒
+      logger.warn('慢数据库查询', metric);
+    }
+  }
+  
+  // ✅ 强制：用户行为追踪
+  trackUserAction(
+    userId: string,
+    action: string,
+    context?: Record<string, any>
+  ): void {
+    const metric = {
+      type: 'user_action',
+      userId,
+      action,
+      context,
+      timestamp: Date.now(),
+    };
+    
+    this.sendMetric(metric);
+  }
+  
+  private sendMetric(metric: any): void {
+    // 发送到监控系统（如DataDog、New Relic等）
+    fetch('/api/metrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(metric),
+    }).catch(console.error);
+  }
+}
+
+export const performanceMonitor = PerformanceMonitor.getInstance();
+```
+
+---
+
+## 📋 全栈开发检查清单
+
+### 开发阶段完成检查
+
+#### 功能开发
+- [ ] **API设计**: RESTful接口设计符合规范
+- [ ] **数据流**: 前后端数据传输格式统一
+- [ ] **错误处理**: 统一的错误处理机制
+- [ ] **数据验证**: 前后端都有数据验证
+- [ ] **权限控制**: 实现了基于角色的访问控制
+
+#### 性能优化
+- [ ] **代码分割**: 大型组件和页面已懒加载
+- [ ] **图片优化**: 实现了响应式图片加载
+- [ ] **缓存策略**: 合理使用了前端和后端缓存
+- [ ] **数据库**: 查询已优化，使用了合适的索引
+
+#### 安全性
+- [ ] **认证授权**: JWT认证流程完整可靠
+- [ ] **数据保护**: 敏感数据加密存储
+- [ ] **XSS防护**: 用户输入已过滤和转义
+- [ ] **CSRF防护**: 实现了CSRF保护机制
+
+### 发布前强制检查
+
+#### 代码质量
+- [ ] **TypeScript**: 无类型错误，类型覆盖率95%+
+- [ ] **ESLint**: 代码规范检查通过
+- [ ] **测试覆盖**: 关键功能有单元测试和集成测试
+- [ ] **构建**: 生产构建成功，无警告
+
+#### 性能基准
+- [ ] **首屏加载**: < 3秒
+- [ ] **API响应**: 95%的请求 < 500ms
+- [ ] **数据库**: 查询时间 < 100ms
+- [ ] **包大小**: 主chunk < 250KB
+
+#### 监控告警
+- [ ] **错误监控**: 前后端错误追踪已配置
+- [ ] **性能监控**: 关键指标监控已就位
+- [ ] **日志系统**: 结构化日志记录完善
+- [ ] **告警机制**: 异常情况能及时通知
+
+---
+
+**适用项目**: BiuBiuStar全栈社交平台  
+**更新频率**: 架构重大变更时同步更新  
+**强制执行**: 所有P0级规则必须100%遵循，P1级规则建议90%以上遵循
