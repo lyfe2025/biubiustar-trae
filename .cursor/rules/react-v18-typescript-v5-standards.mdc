@@ -1,0 +1,373 @@
+---
+alwaysApply: false
+---
+## ⚡ 性能优化规则（P1级）
+
+### 1. 组件优化强制要求
+
+#### React.memo使用标准
+```typescript
+// ✅ 强制：列表项组件必须memo化
+const PostItem = React.memo<PostItemProps>(({ post, onLike, onShare }) => {
+  return (
+    <article className="post-item">
+      {/* 组件内容 */}
+    </article>
+  );
+});
+
+// ✅ 强制：复杂计算必须useMemo
+function ExpensiveComponent({ data }: Props) {
+  const processedData = useMemo(() => {
+    return data.map(item => ({
+      ...item,
+      computed: heavyComputation(item)
+    }));
+  }, [data]);
+  
+  return <div>{/* 渲染 */}</div>;
+}
+```
+
+#### 事件处理优化
+```typescript
+// ✅ 强制：事件处理函数必须useCallback缓存
+function PostList({ posts }: PostListProps) {
+  const handleLike = useCallback((postId: string) => {
+    // 点赞逻辑
+  }, []);
+  
+  const handleShare = useCallback((postId: string) => {
+    // 分享逻辑
+  }, []);
+  
+  return (
+    <div>
+      {posts.map(post => (
+        <PostItem 
+          key={post.id}
+          post={post}
+          onLike={handleLike}
+          onShare={handleShare}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+### 2. 代码分割与懒加载
+
+#### 路由级别代码分割（强制）
+```typescript
+// ✅ 强制：页面组件必须懒加载
+const Home = lazy(() => import('@/pages/Home'));
+const Profile = lazy(() => import('@/pages/Profile'));
+const Admin = lazy(() => import('@/pages/Admin'));
+
+// ✅ 强制：路由配置必须包含Suspense
+function App() {
+  return (
+    <Router>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/admin" element={<Admin />} />
+        </Routes>
+      </Suspense>
+    </Router>
+  );
+}
+```
+
+---
+
+## 🎨 UI/UX开发标准（P1级）
+
+### 1. Tailwind CSS使用规范
+
+#### 响应式设计强制要求
+```typescript
+// ✅ 强制：移动优先设计
+<div className="
+  flex flex-col gap-4           // 移动端：垂直布局
+  md:flex-row md:gap-6         // 平板：水平布局  
+  lg:gap-8                     // 桌面：更大间距
+">
+  <main className="
+    w-full                     // 移动端：全宽
+    md:w-2/3                   // 平板：2/3宽度
+    lg:w-3/4                   // 桌面：3/4宽度
+  ">
+    {/* 主内容 */}
+  </main>
+  
+  <aside className="
+    w-full                     // 移动端：全宽
+    md:w-1/3                   // 平板：1/3宽度
+    lg:w-1/4                   // 桌面：1/4宽度
+  ">
+    {/* 侧边栏 */}
+  </aside>
+</div>
+```
+
+#### 主题色彩系统（强制使用项目配置）
+```typescript
+// ✅ 强制：使用项目定义的色彩系统
+<button className="
+  bg-primary-500             // 主色调
+  hover:bg-primary-600       // 悬停状态
+  active:bg-primary-700      // 激活状态
+  text-white
+  dark:bg-primary-400        // 暗色模式适配
+  dark:hover:bg-primary-500
+">
+  确认操作
+</button>
+
+// ✅ 强制：语义化颜色使用
+<div className="
+  bg-red-50 border border-red-200 text-red-800    // 错误状态
+  dark:bg-red-950 dark:border-red-800 dark:text-red-200
+">
+  错误信息
+</div>
+```
+
+### 2. 国际化(i18n)强制标准
+
+#### 文本国际化规范
+```typescript
+// ✅ 强制：所有用户可见文本必须国际化
+function WelcomeMessage({ username }: Props) {
+  const { t } = useTranslation();
+  
+  return (
+    <div>
+      {/* ✅ 正确：使用翻译key */}
+      <h1>{t('welcome.title', { username })}</h1>
+      
+      {/* ❌ 错误：硬编码文本 */}
+      <h1>欢迎回来，{username}！</h1>
+    </div>
+  );
+}
+
+// ✅ 强制：翻译key必须命名空间化
+// zh.json
+{
+  "auth": {
+    "login": {
+      "title": "登录",
+      "email": "邮箱地址",
+      "password": "密码",
+      "submit": "登录",
+      "forgotPassword": "忘记密码？"
+    }
+  },
+  "posts": {
+    "create": {
+      "title": "创建帖子",
+      "content": "帖子内容",
+      "tags": "标签"
+    }
+  }
+}
+```
+
+---
+
+## 🔒 错误处理与验证（P0级）
+
+### 1. 表单验证强制标准
+
+#### Zod验证架构
+```typescript
+// ✅ 强制：表单必须Zod验证
+import { z } from 'zod';
+
+const LoginSchema = z.object({
+  email: z.string()
+    .email({ message: 'auth.validation.invalidEmail' })
+    .min(1, { message: 'auth.validation.emailRequired' }),
+  password: z.string()
+    .min(8, { message: 'auth.validation.passwordMinLength' })
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+      message: 'auth.validation.passwordFormat'
+    }),
+});
+
+type LoginFormData = z.infer<typeof LoginSchema>;
+
+// ✅ 强制：表单组件必须类型安全
+function LoginForm() {
+  const [formData, setFormData] = useState<LoginFormData>({
+    email: '',
+    password: ''
+  });
+  
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      const validatedData = LoginSchema.parse(formData);
+      await login(validatedData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const fieldErrors: Record<string, string> = {};
+        error.errors.forEach((err) => {
+          if (err.path[0]) {
+            fieldErrors[err.path[0] as string] = err.message;
+          }
+        });
+        setErrors(fieldErrors);
+      }
+    }
+  };
+}
+```
+
+### 2. API错误处理标准
+
+#### 统一错误处理架构
+```typescript
+// ✅ 强制：API错误必须统一处理
+interface ApiError {
+  code: string;
+  message: string;
+  details?: Record<string, any>;
+}
+
+class ApiClient {
+  private async request<T>(
+    url: string, 
+    options: RequestInit
+  ): Promise<T> {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData: ApiError = await response.json();
+        throw new ApiException(errorData);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      if (error instanceof ApiException) {
+        throw error;
+      }
+      
+      // 网络错误等
+      throw new ApiException({
+        code: 'NETWORK_ERROR',
+        message: 'api.errors.networkError'
+      });
+    }
+  }
+}
+
+class ApiException extends Error {
+  constructor(public apiError: ApiError) {
+    super(apiError.message);
+    this.name = 'ApiException';
+  }
+}
+```
+
+---
+
+## 🚀 开发工具集成（P1级）
+
+### 1. ESLint配置强化
+
+#### React特定规则
+```javascript
+// eslint.config.js - 强制配置
+export default [
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      // React规则
+      'react/jsx-props-no-spreading': 'warn',
+      'react/jsx-no-useless-fragment': 'error',
+      'react/jsx-boolean-value': ['error', 'never'],
+      
+      // TypeScript规则
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/prefer-nullish-coalescing': 'error',
+      '@typescript-eslint/prefer-optional-chain': 'error',
+      
+      // React Hooks规则
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+    }
+  }
+];
+```
+
+### 2. Vite开发配置优化
+
+#### 性能配置
+```typescript
+// vite.config.ts - 生产优化配置
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          ui: ['lucide-react', 'sonner'],
+          i18n: ['i18next', 'react-i18next'],
+        },
+      },
+    },
+    // 代码分割阈值
+    chunkSizeWarningLimit: 1000,
+  },
+  
+  // 开发服务器配置
+  server: {
+    hmr: {
+      overlay: true, // 错误覆盖显示
+    },
+  },
+});
+```
+
+---
+
+## 📋 代码审查清单
+
+### 组件开发完成检查
+
+- [ ] **类型安全**: 所有Props、State、API响应都有明确类型
+- [ ] **性能优化**: 复杂组件已memo化，事件处理已useCallback
+- [ ] **国际化**: 所有用户可见文本已国际化
+- [ ] **响应式**: 组件在移动端、平板、桌面都正常显示
+- [ ] **错误处理**: 异步操作有错误边界，表单有验证
+- [ ] **测试**: 关键功能有单元测试
+- [ ] **无障碍**: 符合WCAG基本要求
+
+### 发布前强制检查
+
+- [ ] **构建无警告**: `npm run build` 无TypeScript错误
+- [ ] **代码质量**: ESLint检查通过
+- [ ] **包大小**: chunk大小在合理范围内
+- [ ] **性能测试**: 关键页面加载时间 < 3秒
+
+---
+
+**适用项目**: BiuBiuStar社交平台  
+**更新频率**: 技术栈版本升级时同步更新  
+**强制执行**: 所有P0级规则必须100%遵循，P1级规则建议95%以上遵循

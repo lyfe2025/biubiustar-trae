@@ -1,0 +1,884 @@
+# Express 4.21 + Node.js 20 专用开发规范
+
+> **技术栈**: Express 4.21.2 + Node.js 20 + TypeScript 5.8.3  
+> **适用项目**: BiuBiuStar社交平台 - RESTful API服务端
+
+---
+
+## 🔥 强制执行规则（P0级）
+
+### 1. TypeScript API开发强制标准
+
+#### 路由处理器类型安全
+```typescript
+// ✅ 强制：所有路由处理器必须明确类型
+import { Request, Response, NextFunction } from 'express';
+
+// 请求/响应类型定义
+interface AuthenticatedRequest extends Request {
+  user?: {
+    id: string;
+    email: string;
+    role: 'user' | 'admin' | 'moderator';
+  };
+}
+
+interface LoginRequest extends Request {
+  body: {
+    email: string;
+    password: string;
+  };
+}
+
+interface LoginResponse {
+  success: boolean;
+  data?: {
+    user: User;
+    token: string;
+  };
+  message?: string;
+}
+
+// ✅ 强制：路由处理器类型化
+export const login = async (
+  req: LoginRequest,
+  res: Response<LoginResponse>,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { email, password } = req.body;
+    
+    // 业务逻辑
+    const result = await authService.login(email, password);
+    
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+```
+
+#### API响应标准化（强制）
+```typescript
+// ✅ 强制：统一API响应格式
+interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  error?: {
+    code: string;
+    details?: any;
+  };
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+// ✅ 强制：响应工具函数
+class ResponseHelper {
+  static success<T>(data: T, message?: string): ApiResponse<T> {
+    return {
+      success: true,
+      data,
+      message
+    };
+  }
+  
+  static error(code: string, message: string, details?: any): ApiResponse {
+    return {
+      success: false,
+      error: {
+        code,
+        details
+      },
+      message
+    };
+  }
+  
+  static paginated<T>(
+    data: T[],
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+    }
+  ): ApiResponse<T[]> {
+    return {
+      success: true,
+      data,
+      pagination: {
+        ...pagination,
+        totalPages: Math.ceil(pagination.total / pagination.limit)
+      }
+    };
+  }
+}
+```
+
+### 2. 路由架构强制标准
+
+#### 模块化路由结构（强制）
+```typescript
+// api/routes/posts.ts - 强制结构模式
+import express from 'express';
+import { validate } from '../middleware/validation.js';
+import { authenticate, authorize } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rateLimit.js';
+import * as postsController from '../controllers/posts.js';
+import { createPostSchema, updatePostSchema } from '../schemas/posts.js';
+
+const router = express.Router();
+
+// ✅ 强制：路由必须包含完整的中间件链
+router.get('/',
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }), // 限流
+  postsController.getPosts
+);
+
+router.post('/',
+  authenticate,                           // 认证
+  authorize(['user', 'admin']),          // 授权
+  validate(createPostSchema),            // 验证
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 10 }), // 限流
+  postsController.createPost
+);
+
+router.put('/:id',
+  authenticate,
+  authorize(['user', 'admin']),
+  validate(updatePostSchema),
+  postsController.updatePost
+);
+
+router.delete('/:id',
+  authenticate,
+  authorize(['admin', 'moderator']),
+  postsController.deletePost
+);
+
+export default router;
+```
+
+#### 控制器分离模式（强制）
+```typescript
+// api/controllers/posts.ts - 强制控制器模式
+import { Request, Response, NextFunction } from 'express';
+import { PostService } from '../services/PostService.js';
+import { ResponseHelper } from '../utils/response.js';
+import { AppError } from '../utils/errors.js';
+
+export class PostsController {
+  private postService: PostService;
+  
+  constructor() {
+    this.postService = new PostService();
+  }
+  
+  // ✅ 强制：控制器方法必须async/await + 错误处理
+  getPosts = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { page = 1, limit = 10, status = 'published' } = req.query;
+      
+      const result = await this.postService.getPosts({
+        page: Number(page),
+        limit: Number(limit),
+        status: status as string
+      });
+      
+      res.status(200).json(
+        ResponseHelper.paginated(result.posts, {
+          page: Number(page),
+          limit: Number(limit),
+          total: result.total
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+  
+  createPost = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      if (!req.user) {
+        throw new AppError('UNAUTHORIZED', '未认证用户', 401);
+      }
+      
+      const postData = {
+        ...req.body,
+        authorId: req.user.id
+      };
+      
+      const post = await this.postService.createPost(postData);
+      
+      res.status(201).json(
+        ResponseHelper.success(post, '帖子创建成功')
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+}
+
+// 导出实例方法
+const postsController = new PostsController();
+export const { getPosts, createPost } = postsController;
+```
+
+### 3. 数据验证强制标准
+
+#### Zod验证架构（强制）
+```typescript
+// api/schemas/posts.ts - 强制验证模式
+import { z } from 'zod';
+
+export const createPostSchema = z.object({
+  body: z.object({
+    title: z.string()
+      .min(1, '标题不能为空')
+      .max(200, '标题不能超过200字符'),
+    content: z.string()
+      .min(1, '内容不能为空')
+      .max(10000, '内容不能超过10000字符'),
+    tags: z.array(z.string())
+      .max(10, '标签数量不能超过10个')
+      .optional(),
+    coverImage: z.string()
+      .url('封面图片必须是有效URL')
+      .optional(),
+    status: z.enum(['draft', 'published'])
+      .default('draft')
+  })
+});
+
+export const updatePostSchema = z.object({
+  params: z.object({
+    id: z.string()
+      .uuid('无效的帖子ID格式')
+  }),
+  body: z.object({
+    title: z.string()
+      .min(1, '标题不能为空')
+      .max(200, '标题不能超过200字符')
+      .optional(),
+    content: z.string()
+      .min(1, '内容不能为空')
+      .max(10000, '内容不能超过10000字符')
+      .optional(),
+    tags: z.array(z.string())
+      .max(10, '标签数量不能超过10个')
+      .optional(),
+    status: z.enum(['draft', 'published', 'archived'])
+      .optional()
+  })
+});
+
+// ✅ 强制：导出类型定义
+export type CreatePostRequest = z.infer<typeof createPostSchema>;
+export type UpdatePostRequest = z.infer<typeof updatePostSchema>;
+```
+
+#### 验证中间件（强制实现）
+```typescript
+// api/middleware/validation.ts - 强制验证中间件
+import { Request, Response, NextFunction } from 'express';
+import { ZodSchema, ZodError } from 'zod';
+import { AppError } from '../utils/errors.js';
+
+export const validate = (schema: ZodSchema) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      // 验证请求数据
+      const validated = schema.parse({
+        body: req.body,
+        params: req.params,
+        query: req.query
+      });
+      
+      // 将验证后的数据替换原始数据
+      req.body = validated.body || req.body;
+      req.params = validated.params || req.params;
+      req.query = validated.query || req.query;
+      
+      next();
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const validationErrors = error.errors.map(err => ({
+          field: err.path.join('.'),
+          message: err.message
+        }));
+        
+        next(new AppError(
+          'VALIDATION_ERROR',
+          '请求数据验证失败',
+          400,
+          { errors: validationErrors }
+        ));
+      } else {
+        next(error);
+      }
+    }
+  };
+};
+```
+
+---
+
+## 🛡️ 安全防护强制规则（P0级）
+
+### 1. 认证授权中间件（强制实现）
+
+#### JWT认证中间件
+```typescript
+// api/middleware/auth.ts - 强制认证实现
+import jwt from 'jsonwebtoken';
+import { Request, Response, NextFunction } from 'express';
+import { AppError } from '../utils/errors.js';
+
+interface JWTPayload {
+  userId: string;
+  email: string;
+  role: string;
+  iat: number;
+  exp: number;
+}
+
+export const authenticate = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const token = extractToken(req);
+    
+    if (!token) {
+      throw new AppError('UNAUTHORIZED', '缺少认证令牌', 401);
+    }
+    
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new AppError('SERVER_ERROR', '服务器配置错误', 500);
+    }
+    
+    const decoded = jwt.verify(token, secret) as JWTPayload;
+    
+    // 验证用户是否存在且活跃
+    const user = await getUserById(decoded.userId);
+    if (!user || !user.isActive) {
+      throw new AppError('UNAUTHORIZED', '用户账号异常', 401);
+    }
+    
+    req.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role
+    };
+    
+    next();
+  } catch (error) {
+    if (error instanceof jwt.JsonWebTokenError) {
+      next(new AppError('UNAUTHORIZED', '无效的认证令牌', 401));
+    } else {
+      next(error);
+    }
+  }
+};
+
+// ✅ 强制：角色授权中间件
+export const authorize = (allowedRoles: string[]) => {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new AppError('UNAUTHORIZED', '未认证用户', 401));
+    }
+    
+    if (!allowedRoles.includes(req.user.role)) {
+      return next(new AppError('FORBIDDEN', '权限不足', 403));
+    }
+    
+    next();
+  };
+};
+
+function extractToken(req: Request): string | null {
+  const authorization = req.headers.authorization;
+  
+  if (authorization && authorization.startsWith('Bearer ')) {
+    return authorization.substring(7);
+  }
+  
+  return null;
+}
+```
+
+### 2. 安全中间件配置（强制）
+
+#### 综合安全防护
+```typescript
+// api/middleware/security.ts - 强制安全配置
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
+import { Request, Response, NextFunction } from 'express';
+
+// ✅ 强制：API限流配置
+export const createRateLimit = (options: {
+  windowMs: number;
+  max: number;
+  message?: string;
+}) => {
+  return rateLimit({
+    windowMs: options.windowMs,
+    max: options.max,
+    message: {
+      success: false,
+      error: {
+        code: 'RATE_LIMIT_EXCEEDED',
+        details: null
+      },
+      message: options.message || '请求过于频繁，请稍后再试'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+};
+
+// ✅ 强制：不同端点的限流策略
+export const authRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000, // 15分钟
+  max: 5,                   // 最多5次认证尝试
+  message: '认证尝试过于频繁，请15分钟后再试'
+});
+
+export const apiRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000, // 15分钟
+  max: 100                  // 一般API请求100次
+});
+
+export const uploadRateLimit = createRateLimit({
+  windowMs: 60 * 60 * 1000, // 1小时
+  max: 10                   // 上传限制10次
+});
+
+// ✅ 强制：安全头配置
+export const securityHeaders = helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // 避免CORS问题
+});
+
+// ✅ 强制：请求大小限制
+export const requestSizeLimit = (req: Request, res: Response, next: NextFunction) => {
+  const contentLength = req.headers['content-length'];
+  const maxSize = 10 * 1024 * 1024; // 10MB
+  
+  if (contentLength && parseInt(contentLength) > maxSize) {
+    return res.status(413).json({
+      success: false,
+      error: {
+        code: 'PAYLOAD_TOO_LARGE',
+        details: null
+      },
+      message: '请求数据过大'
+    });
+  }
+  
+  next();
+};
+```
+
+---
+
+## 🔍 错误处理强制标准（P0级）
+
+### 1. 统一错误处理架构
+
+#### 自定义错误类（强制）
+```typescript
+// api/utils/errors.ts - 强制错误处理体系
+export class AppError extends Error {
+  public readonly code: string;
+  public readonly statusCode: number;
+  public readonly isOperational: boolean;
+  public readonly details?: any;
+  
+  constructor(
+    code: string,
+    message: string,
+    statusCode: number = 500,
+    details?: any,
+    isOperational: boolean = true
+  ) {
+    super(message);
+    
+    this.code = code;
+    this.statusCode = statusCode;
+    this.isOperational = isOperational;
+    this.details = details;
+    
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+// ✅ 强制：常用错误类型
+export class ValidationError extends AppError {
+  constructor(message: string, details?: any) {
+    super('VALIDATION_ERROR', message, 400, details);
+  }
+}
+
+export class NotFoundError extends AppError {
+  constructor(resource: string) {
+    super('NOT_FOUND', `${resource}不存在`, 404);
+  }
+}
+
+export class UnauthorizedError extends AppError {
+  constructor(message: string = '未授权访问') {
+    super('UNAUTHORIZED', message, 401);
+  }
+}
+
+export class ForbiddenError extends AppError {
+  constructor(message: string = '权限不足') {
+    super('FORBIDDEN', message, 403);
+  }
+}
+```
+
+#### 全局错误处理中间件（强制）
+```typescript
+// api/middleware/errorHandler.ts - 强制错误处理中间件
+import { Request, Response, NextFunction } from 'express';
+import { AppError } from '../utils/errors.js';
+
+export const errorHandler = (
+  error: Error,
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  // 操作错误 - 用户可见
+  if (error instanceof AppError && error.isOperational) {
+    res.status(error.statusCode).json({
+      success: false,
+      error: {
+        code: error.code,
+        details: error.details
+      },
+      message: error.message
+    });
+    return;
+  }
+  
+  // 系统错误 - 记录日志，返回通用错误
+  console.error('系统错误:', {
+    error: error.message,
+    stack: error.stack,
+    url: req.url,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  });
+  
+  res.status(500).json({
+    success: false,
+    error: {
+      code: 'INTERNAL_SERVER_ERROR',
+      details: null
+    },
+    message: '服务器内部错误'
+  });
+};
+
+// ✅ 强制：404处理中间件
+export const notFoundHandler = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  res.status(404).json({
+    success: false,
+    error: {
+      code: 'NOT_FOUND',
+      details: null
+    },
+    message: `路由 ${req.method} ${req.path} 不存在`
+  });
+};
+```
+
+---
+
+## 📊 日志记录强制标准（P1级）
+
+### 1. 结构化日志记录
+
+#### 日志工具类（强制实现）
+```typescript
+// api/utils/logger.ts - 强制日志标准
+enum LogLevel {
+  ERROR = 'error',
+  WARN = 'warn',
+  INFO = 'info',
+  DEBUG = 'debug'
+}
+
+interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  message: string;
+  meta?: Record<string, any>;
+  userId?: string;
+  requestId?: string;
+}
+
+export class Logger {
+  private static instance: Logger;
+  
+  static getInstance(): Logger {
+    if (!Logger.instance) {
+      Logger.instance = new Logger();
+    }
+    return Logger.instance;
+  }
+  
+  private formatLog(entry: LogEntry): string {
+    return JSON.stringify({
+      ...entry,
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  error(message: string, meta?: Record<string, any>, userId?: string): void {
+    const entry: LogEntry = {
+      timestamp: new Date().toISOString(),
+      level: LogLevel.ERROR,
+      message,
+      meta,
+      userId
+    };
+    
+    console.error(this.formatLog(entry));
+  }
+  
+  info(message: string, meta?: Record<string, any>, userId?: string): void {
+    const entry: LogEntry = {
+      timestamp: new Date().toISOString(),
+      level: LogLevel.INFO,
+      message,
+      meta,
+      userId
+    };
+    
+    console.log(this.formatLog(entry));
+  }
+  
+  // API访问日志
+  apiAccess(req: Request, res: Response, duration: number): void {
+    this.info('API访问', {
+      method: req.method,
+      url: req.path,
+      statusCode: res.statusCode,
+      duration: `${duration}ms`,
+      userAgent: req.get('user-agent'),
+      ip: req.ip
+    }, (req as any).user?.id);
+  }
+}
+
+export const logger = Logger.getInstance();
+```
+
+#### 请求日志中间件（强制）
+```typescript
+// api/middleware/logging.ts - 强制请求日志
+import { Request, Response, NextFunction } from 'express';
+import { logger } from '../utils/logger.js';
+
+export const requestLogger = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  const startTime = Date.now();
+  
+  // 响应结束时记录日志
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    logger.apiAccess(req, res, duration);
+  });
+  
+  next();
+};
+```
+
+---
+
+## 🚀 性能优化规则（P1级）
+
+### 1. 数据库查询优化
+
+#### 分页查询标准（强制）
+```typescript
+// api/services/BaseService.ts - 强制分页查询模式
+export interface PaginationOptions {
+  page: number;
+  limit: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
+export abstract class BaseService {
+  protected async paginate<T>(
+    query: any, // Supabase查询对象
+    options: PaginationOptions
+  ): Promise<PaginatedResult<T>> {
+    const { page, limit, sortBy = 'created_at', sortOrder = 'desc' } = options;
+    const offset = (page - 1) * limit;
+    
+    // 获取总数
+    const { count, error: countError } = await query
+      .select('*', { count: 'exact', head: true });
+    
+    if (countError) {
+      throw new Error(`获取数据总数失败: ${countError.message}`);
+    }
+    
+    // 获取分页数据
+    const { data, error } = await query
+      .select('*')
+      .order(sortBy, { ascending: sortOrder === 'asc' })
+      .range(offset, offset + limit - 1);
+    
+    if (error) {
+      throw new Error(`获取分页数据失败: ${error.message}`);
+    }
+    
+    const total = count || 0;
+    const totalPages = Math.ceil(total / limit);
+    
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1
+      }
+    };
+  }
+}
+```
+
+### 2. 缓存策略（推荐实现）
+
+#### Redis缓存工具
+```typescript
+// api/utils/cache.ts - Redis缓存工具
+import { createClient } from 'redis';
+
+export class CacheService {
+  private client;
+  
+  constructor() {
+    this.client = createClient({
+      url: process.env.REDIS_URL
+    });
+    
+    this.client.on('error', (err) => {
+      console.error('Redis连接错误:', err);
+    });
+  }
+  
+  async connect(): Promise<void> {
+    await this.client.connect();
+  }
+  
+  // ✅ 推荐：缓存常用数据
+  async get<T>(key: string): Promise<T | null> {
+    try {
+      const value = await this.client.get(key);
+      return value ? JSON.parse(value) : null;
+    } catch (error) {
+      console.error('缓存读取失败:', error);
+      return null;
+    }
+  }
+  
+  async set(key: string, value: any, ttl: number = 3600): Promise<void> {
+    try {
+      await this.client.setEx(key, ttl, JSON.stringify(value));
+    } catch (error) {
+      console.error('缓存写入失败:', error);
+    }
+  }
+  
+  async del(key: string): Promise<void> {
+    try {
+      await this.client.del(key);
+    } catch (error) {
+      console.error('缓存删除失败:', error);
+    }
+  }
+}
+
+export const cache = new CacheService();
+```
+
+---
+
+## 📋 代码审查清单
+
+### API开发完成检查
+
+- [ ] **类型安全**: 所有请求/响应都有TypeScript类型定义
+- [ ] **数据验证**: 使用Zod进行请求数据验证
+- [ ] **错误处理**: 统一错误处理，有意义的错误消息
+- [ ] **认证授权**: 敏感操作需要认证和授权检查
+- [ ] **安全防护**: 实施限流、请求大小限制等安全措施
+- [ ] **日志记录**: 关键操作有日志记录
+- [ ] **响应格式**: 统一的API响应格式
+
+### 发布前强制检查
+
+- [ ] **环境变量**: 所有敏感配置使用环境变量
+- [ ] **数据库**: 数据库连接和查询优化
+- [ ] **性能测试**: API响应时间在合理范围
+- [ ] **安全扫描**: 无明显安全漏洞
+
+---
+
+**适用项目**: BiuBiuStar社交平台API服务  
+**更新频率**: Express/Node.js版本升级时同步更新  
+**强制执行**: 所有P0级规则必须100%遵循，P1级规则建议90%以上遵循

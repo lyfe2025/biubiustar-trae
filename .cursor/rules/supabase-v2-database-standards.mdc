@@ -1,0 +1,941 @@
+# Supabase 2.53 数据库开发规范
+
+> **技术栈**: Supabase 2.53.0 + PostgreSQL 15 + Row Level Security  
+> **适用项目**: BiuBiuStar社交平台 - 数据库架构与安全策略
+
+---
+
+## 🔥 强制执行规则（P0级）
+
+### 1. 数据库架构强制标准
+
+#### 表设计强制要求
+```sql
+-- ✅ 强制：所有表必须包含标准字段
+CREATE TABLE IF NOT EXISTS public.example_table (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,  -- 必须：UUID主键
+  
+  -- 业务字段
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  
+  -- ✅ 强制：审计字段（必须包含）
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  
+  -- ✅ 强制：软删除字段（推荐）
+  deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+  
+  -- ✅ 强制：版本控制字段（重要数据表必须）
+  version INTEGER DEFAULT 1 NOT NULL
+);
+
+-- ✅ 强制：必须创建更新触发器
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_example_table_updated_at
+  BEFORE UPDATE ON public.example_table
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+```
+
+#### 外键约束强制规范
+```sql
+-- ✅ 强制：外键必须明确级联行为
+CREATE TABLE IF NOT EXISTS public.posts (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES public.users(id) 
+    ON DELETE CASCADE        -- 明确指定级联删除
+    ON UPDATE CASCADE,       -- 明确指定级联更新
+  
+  title VARCHAR(500) NOT NULL,
+  content TEXT NOT NULL,
+  status post_status DEFAULT 'draft',
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+
+-- ✅ 强制：多对多关系必须通过中间表
+CREATE TABLE IF NOT EXISTS public.post_tags (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  post_id UUID NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
+  tag_id UUID NOT NULL REFERENCES public.tags(id) ON DELETE CASCADE,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  
+  -- ✅ 强制：复合唯一约束
+  UNIQUE(post_id, tag_id)
+);
+```
+
+#### 枚举类型强制使用
+```sql
+-- ✅ 强制：状态字段必须使用枚举类型
+CREATE TYPE user_role AS ENUM ('user', 'moderator', 'admin', 'super_admin');
+CREATE TYPE post_status AS ENUM ('draft', 'published', 'archived', 'deleted');
+CREATE TYPE event_status AS ENUM ('upcoming', 'ongoing', 'completed', 'cancelled');
+
+-- ✅ 在表中使用枚举
+ALTER TABLE public.users 
+ADD COLUMN role user_role DEFAULT 'user' NOT NULL;
+
+ALTER TABLE public.posts 
+ADD COLUMN status post_status DEFAULT 'draft' NOT NULL;
+```
+
+### 2. Row Level Security (RLS) 强制配置
+
+#### 用户表RLS策略（强制）
+```sql
+-- ✅ 强制：启用RLS
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+-- ✅ 强制：用户只能查看公开信息或自己的信息
+CREATE POLICY "用户可以查看公开用户信息" ON public.users
+FOR SELECT USING (true);  -- 公开信息
+
+-- ✅ 强制：用户只能更新自己的信息
+CREATE POLICY "用户只能更新自己的信息" ON public.users
+FOR UPDATE USING (auth.uid() = id);
+
+-- ✅ 强制：用户只能删除自己的账户
+CREATE POLICY "用户只能删除自己的账户" ON public.users
+FOR DELETE USING (auth.uid() = id);
+```
+
+#### 帖子表RLS策略（强制）
+```sql
+-- ✅ 强制：启用RLS
+ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
+
+-- ✅ 强制：查看策略 - 已发布的帖子或用户自己的帖子
+CREATE POLICY "查看已发布帖子或自己的帖子" ON public.posts
+FOR SELECT USING (
+  status = 'published' OR 
+  user_id = auth.uid()
+);
+
+-- ✅ 强制：创建策略 - 认证用户可以创建帖子
+CREATE POLICY "认证用户可以创建帖子" ON public.posts
+FOR INSERT WITH CHECK (
+  auth.uid() IS NOT NULL AND 
+  user_id = auth.uid()
+);
+
+-- ✅ 强制：更新策略 - 用户只能更新自己的帖子
+CREATE POLICY "用户只能更新自己的帖子" ON public.posts
+FOR UPDATE USING (user_id = auth.uid());
+
+-- ✅ 强制：删除策略 - 用户和管理员可以删除
+CREATE POLICY "用户和管理员可以删除帖子" ON public.posts
+FOR DELETE USING (
+  user_id = auth.uid() OR
+  EXISTS (
+    SELECT 1 FROM public.users 
+    WHERE id = auth.uid() 
+    AND role IN ('admin', 'super_admin')
+  )
+);
+```
+
+#### 管理员特权策略（强制）
+```sql
+-- ✅ 强制：管理员绕过所有RLS策略
+CREATE POLICY "管理员可以管理所有内容" ON public.posts
+FOR ALL USING (
+  EXISTS (
+    SELECT 1 FROM public.users 
+    WHERE id = auth.uid() 
+    AND role IN ('admin', 'super_admin')
+  )
+);
+
+-- ✅ 强制：内容审核策略
+CREATE POLICY "审核员可以更新帖子状态" ON public.posts
+FOR UPDATE USING (
+  EXISTS (
+    SELECT 1 FROM public.users 
+    WHERE id = auth.uid() 
+    AND role IN ('moderator', 'admin', 'super_admin')
+  )
+) WITH CHECK (
+  -- 审核员只能修改状态，不能修改内容
+  OLD.content = NEW.content AND
+  OLD.user_id = NEW.user_id
+);
+```
+
+### 3. 索引策略强制标准
+
+#### 性能索引（强制创建）
+```sql
+-- ✅ 强制：外键字段必须创建索引
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_posts_user_id 
+ON public.posts(user_id);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_comments_post_id 
+ON public.comments(post_id);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_likes_user_id 
+ON public.likes(user_id);
+
+-- ✅ 强制：查询频繁的字段必须创建索引
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_posts_status_created_at 
+ON public.posts(status, created_at DESC);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_username 
+ON public.users(username);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email 
+ON public.users(email);
+
+-- ✅ 强制：复合索引用于复杂查询
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_posts_user_status_created 
+ON public.posts(user_id, status, created_at DESC);
+
+-- ✅ 强制：唯一性约束索引
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_likes_user_post_unique
+ON public.likes(user_id, post_id) 
+WHERE post_id IS NOT NULL;
+
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_likes_user_comment_unique
+ON public.likes(user_id, comment_id) 
+WHERE comment_id IS NOT NULL;
+```
+
+#### 全文搜索索引（推荐）
+```sql
+-- ✅ 推荐：全文搜索索引
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_posts_content_search
+ON public.posts USING gin(to_tsvector('simple', content));
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_search
+ON public.users USING gin(
+  to_tsvector('simple', 
+    COALESCE(display_name, '') || ' ' || 
+    COALESCE(username, '') || ' ' || 
+    COALESCE(bio, '')
+  )
+);
+```
+
+---
+
+## 🛡️ 数据安全强制规则（P0级）
+
+### 1. 敏感数据保护
+
+#### 数据加密策略（强制）
+```sql
+-- ✅ 强制：敏感数据必须加密存储
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- 创建用户认证表（敏感信息分离）
+CREATE TABLE IF NOT EXISTS auth.user_credentials (
+  user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+  
+  -- ✅ 强制：密码必须哈希存储
+  password_hash VARCHAR(255) NOT NULL,
+  
+  -- ✅ 强制：敏感信息加密
+  phone_encrypted TEXT,  -- pgp_sym_encrypt(phone, 'secret_key')
+  id_number_encrypted TEXT,
+  
+  -- 安全元数据
+  last_password_change TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  failed_login_attempts INTEGER DEFAULT 0,
+  locked_until TIMESTAMP WITH TIME ZONE,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+
+-- ✅ 强制：RLS保护认证表
+ALTER TABLE auth.user_credentials ENABLE ROW LEVEL SECURITY;
+
+-- 只有用户自己和系统可以访问
+CREATE POLICY "用户只能访问自己的认证信息" ON auth.user_credentials
+FOR ALL USING (user_id = auth.uid());
+```
+
+#### 数据脱敏函数（强制实现）
+```sql
+-- ✅ 强制：敏感数据脱敏函数
+CREATE OR REPLACE FUNCTION public.mask_email(email TEXT)
+RETURNS TEXT AS $$
+BEGIN
+  IF email IS NULL THEN RETURN NULL; END IF;
+  
+  RETURN 
+    SUBSTRING(email FROM 1 FOR 2) || 
+    '***' || 
+    SUBSTRING(email FROM '@.*');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION public.mask_phone(phone TEXT)
+RETURNS TEXT AS $$
+BEGIN
+  IF phone IS NULL THEN RETURN NULL; END IF;
+  
+  RETURN 
+    SUBSTRING(phone FROM 1 FOR 3) || 
+    '****' || 
+    SUBSTRING(phone FROM LENGTH(phone) - 3);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ✅ 强制：创建脱敏视图供前端使用
+CREATE VIEW public.users_public AS
+SELECT 
+  id,
+  username,
+  display_name,
+  avatar_url,
+  bio,
+  location,
+  website,
+  is_verified,
+  follower_count,
+  following_count,
+  post_count,
+  created_at,
+  
+  -- ✅ 脱敏邮箱（仅显示给用户自己）
+  CASE 
+    WHEN id = auth.uid() THEN email
+    ELSE mask_email(email)
+  END as email_display
+  
+FROM public.users;
+```
+
+### 2. 数据审计强制要求
+
+#### 审计日志表（强制创建）
+```sql
+-- ✅ 强制：创建审计日志表
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  
+  -- 操作信息
+  table_name VARCHAR(100) NOT NULL,
+  operation VARCHAR(20) NOT NULL, -- INSERT, UPDATE, DELETE
+  record_id UUID NOT NULL,
+  
+  -- 用户信息
+  user_id UUID REFERENCES public.users(id),
+  user_role VARCHAR(50),
+  
+  -- 数据变更
+  old_values JSONB,
+  new_values JSONB,
+  changed_fields TEXT[],
+  
+  -- 请求信息
+  ip_address INET,
+  user_agent TEXT,
+  request_id UUID,
+  
+  -- 时间戳
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+
+-- ✅ 强制：审计日志索引
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_audit_logs_table_record
+ON public.audit_logs(table_name, record_id);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_audit_logs_user_created
+ON public.audit_logs(user_id, created_at DESC);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_audit_logs_created_at
+ON public.audit_logs(created_at DESC);
+```
+
+#### 审计触发器（强制实现）
+```sql
+-- ✅ 强制：通用审计触发器函数
+CREATE OR REPLACE FUNCTION public.audit_trigger_function()
+RETURNS TRIGGER AS $$
+DECLARE
+  old_data JSONB;
+  new_data JSONB;
+  excluded_columns TEXT[] := ARRAY['updated_at'];
+BEGIN
+  -- 获取当前用户信息
+  IF TG_OP = 'DELETE' THEN
+    old_data = to_jsonb(OLD);
+    INSERT INTO public.audit_logs (
+      table_name, operation, record_id, user_id,
+      old_values, ip_address, created_at
+    ) VALUES (
+      TG_TABLE_NAME, TG_OP, OLD.id, auth.uid(),
+      old_data, inet_client_addr(), NOW()
+    );
+    RETURN OLD;
+  ELSIF TG_OP = 'UPDATE' THEN
+    old_data = to_jsonb(OLD);
+    new_data = to_jsonb(NEW);
+    
+    -- 只记录实际变更的字段
+    IF old_data != new_data THEN
+      INSERT INTO public.audit_logs (
+        table_name, operation, record_id, user_id,
+        old_values, new_values, ip_address, created_at
+      ) VALUES (
+        TG_TABLE_NAME, TG_OP, NEW.id, auth.uid(),
+        old_data, new_data, inet_client_addr(), NOW()
+      );
+    END IF;
+    RETURN NEW;
+  ELSIF TG_OP = 'INSERT' THEN
+    new_data = to_jsonb(NEW);
+    INSERT INTO public.audit_logs (
+      table_name, operation, record_id, user_id,
+      new_values, ip_address, created_at
+    ) VALUES (
+      TG_TABLE_NAME, TG_OP, NEW.id, auth.uid(),
+      new_data, inet_client_addr(), NOW()
+    );
+    RETURN NEW;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ✅ 强制：为重要表创建审计触发器
+CREATE TRIGGER audit_users_trigger
+  AFTER INSERT OR UPDATE OR DELETE ON public.users
+  FOR EACH ROW EXECUTE FUNCTION public.audit_trigger_function();
+
+CREATE TRIGGER audit_posts_trigger
+  AFTER INSERT OR UPDATE OR DELETE ON public.posts
+  FOR EACH ROW EXECUTE FUNCTION public.audit_trigger_function();
+```
+
+---
+
+## 📊 TypeScript集成标准（P0级）
+
+### 1. 数据库类型定义强制标准
+
+#### 自动类型生成（强制配置）
+```typescript
+// ✅ 强制：使用Supabase CLI生成类型
+// 命令: supabase gen types typescript --project-id your-project-id > src/types/database.types.ts
+
+// src/types/database.types.ts - 自动生成
+export interface Database {
+  public: {
+    Tables: {
+      users: {
+        Row: {
+          id: string;
+          email: string;
+          username: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          bio: string | null;
+          location: string | null;
+          website: string | null;
+          is_verified: boolean;
+          role: 'user' | 'moderator' | 'admin' | 'super_admin';
+          follower_count: number;
+          following_count: number;
+          post_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          email: string;
+          username: string;
+          display_name?: string | null;
+          avatar_url?: string | null;
+          bio?: string | null;
+          location?: string | null;
+          website?: string | null;
+          is_verified?: boolean;
+          role?: 'user' | 'moderator' | 'admin' | 'super_admin';
+          follower_count?: number;
+          following_count?: number;
+          post_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string;
+          username?: string;
+          display_name?: string | null;
+          avatar_url?: string | null;
+          bio?: string | null;
+          location?: string | null;
+          website?: string | null;
+          is_verified?: boolean;
+          role?: 'user' | 'moderator' | 'admin' | 'super_admin';
+          follower_count?: number;
+          following_count?: number;
+          post_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      // ... 其他表类型定义
+    };
+    Views: {
+      // 视图类型定义
+    };
+    Functions: {
+      // 函数类型定义
+    };
+  };
+}
+```
+
+#### 类型安全的Supabase客户端（强制）
+```typescript
+// src/lib/supabase.ts - 强制类型安全配置
+import { createClient } from '@supabase/supabase-js';
+import { Database } from '@/types/database.types';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('缺少Supabase环境变量');
+}
+
+// ✅ 强制：类型化Supabase客户端
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true
+  }
+});
+
+// ✅ 强制：类型别名导出
+export type Tables<T extends keyof Database['public']['Tables']> = 
+  Database['public']['Tables'][T]['Row'];
+
+export type InsertTables<T extends keyof Database['public']['Tables']> = 
+  Database['public']['Tables'][T]['Insert'];
+
+export type UpdateTables<T extends keyof Database['public']['Tables']> = 
+  Database['public']['Tables'][T]['Update'];
+
+// ✅ 强制：业务类型定义
+export type User = Tables<'users'>;
+export type Post = Tables<'posts'>;
+export type Comment = Tables<'comments'>;
+export type Like = Tables<'likes'>;
+export type Follow = Tables<'follows'>;
+
+export type CreateUserData = InsertTables<'users'>;
+export type UpdateUserData = UpdateTables<'users'>;
+export type CreatePostData = InsertTables<'posts'>;
+export type UpdatePostData = UpdateTables<'posts'>;
+```
+
+### 2. 数据访问层强制标准
+
+#### Repository模式（强制实现）
+```typescript
+// src/repositories/BaseRepository.ts - 强制基础Repository
+import { supabase } from '@/lib/supabase';
+import { Database } from '@/types/database.types';
+
+export abstract class BaseRepository<T extends keyof Database['public']['Tables']> {
+  protected tableName: T;
+  
+  constructor(tableName: T) {
+    this.tableName = tableName;
+  }
+  
+  // ✅ 强制：类型安全的基础CRUD操作
+  async findById(id: string): Promise<Tables<T> | null> {
+    const { data, error } = await supabase
+      .from(this.tableName)
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      throw new DatabaseError(`查询${this.tableName}失败`, error);
+    }
+    
+    return data;
+  }
+  
+  async create(data: InsertTables<T>): Promise<Tables<T>> {
+    const { data: result, error } = await supabase
+      .from(this.tableName)
+      .insert(data)
+      .select()
+      .single();
+    
+    if (error) {
+      throw new DatabaseError(`创建${this.tableName}失败`, error);
+    }
+    
+    return result;
+  }
+  
+  async update(id: string, data: UpdateTables<T>): Promise<Tables<T>> {
+    const { data: result, error } = await supabase
+      .from(this.tableName)
+      .update(data)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      throw new DatabaseError(`更新${this.tableName}失败`, error);
+    }
+    
+    return result;
+  }
+  
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from(this.tableName)
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      throw new DatabaseError(`删除${this.tableName}失败`, error);
+    }
+  }
+}
+
+// ✅ 强制：数据库错误类
+export class DatabaseError extends Error {
+  constructor(
+    message: string,
+    public supabaseError: any,
+    public code?: string
+  ) {
+    super(message);
+    this.name = 'DatabaseError';
+    this.code = supabaseError?.code || code;
+  }
+}
+```
+
+#### 具体Repository实现（强制模式）
+```typescript
+// src/repositories/UserRepository.ts - 强制用户Repository
+import { BaseRepository } from './BaseRepository';
+import { User, CreateUserData, UpdateUserData } from '@/lib/supabase';
+
+export class UserRepository extends BaseRepository<'users'> {
+  constructor() {
+    super('users');
+  }
+  
+  // ✅ 强制：业务特定查询方法
+  async findByEmail(email: string): Promise<User | null> {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') { // 未找到记录
+      throw new DatabaseError('根据邮箱查询用户失败', error);
+    }
+    
+    return data;
+  }
+  
+  async findByUsername(username: string): Promise<User | null> {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') {
+      throw new DatabaseError('根据用户名查询用户失败', error);
+    }
+    
+    return data;
+  }
+  
+  // ✅ 强制：分页查询
+  async findWithPagination(options: {
+    page: number;
+    limit: number;
+    search?: string;
+    role?: string;
+  }): Promise<{ users: User[]; total: number }> {
+    const { page, limit, search, role } = options;
+    const offset = (page - 1) * limit;
+    
+    let query = supabase
+      .from('users')
+      .select('*', { count: 'exact' });
+    
+    if (search) {
+      query = query.or(`username.ilike.%${search}%,display_name.ilike.%${search}%`);
+    }
+    
+    if (role) {
+      query = query.eq('role', role);
+    }
+    
+    const { data, error, count } = await query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) {
+      throw new DatabaseError('分页查询用户失败', error);
+    }
+    
+    return {
+      users: data || [],
+      total: count || 0
+    };
+  }
+  
+  // ✅ 强制：关注关系操作
+  async follow(followerId: string, followingId: string): Promise<void> {
+    const { error } = await supabase
+      .from('follows')
+      .insert({
+        follower_id: followerId,
+        following_id: followingId
+      });
+    
+    if (error) {
+      throw new DatabaseError('关注用户失败', error);
+    }
+  }
+  
+  async unfollow(followerId: string, followingId: string): Promise<void> {
+    const { error } = await supabase
+      .from('follows')
+      .delete()
+      .eq('follower_id', followerId)
+      .eq('following_id', followingId);
+    
+    if (error) {
+      throw new DatabaseError('取消关注失败', error);
+    }
+  }
+}
+
+// ✅ 强制：导出单例实例
+export const userRepository = new UserRepository();
+```
+
+---
+
+## 🚀 查询优化强制规则（P1级）
+
+### 1. 查询性能优化
+
+#### 批量操作优化（强制实现）
+```typescript
+// src/services/PostService.ts - 强制批量操作优化
+export class PostService {
+  // ✅ 强制：批量获取帖子及关联数据
+  async getPostsWithUserData(postIds: string[]): Promise<(Post & { user: User })[]> {
+    // 使用join查询减少网络请求
+    const { data, error } = await supabase
+      .from('posts')
+      .select(`
+        *,
+        user:user_id (
+          id,
+          username,
+          display_name,
+          avatar_url,
+          is_verified
+        )
+      `)
+      .in('id', postIds)
+      .eq('status', 'published')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      throw new DatabaseError('批量获取帖子失败', error);
+    }
+    
+    return data || [];
+  }
+  
+  // ✅ 强制：优化的用户动态查询
+  async getUserFeed(userId: string, options: {
+    page: number;
+    limit: number;
+  }): Promise<{ posts: (Post & { user: User })[], total: number }> {
+    const { page, limit } = options;
+    const offset = (page - 1) * limit;
+    
+    // 使用CTE或子查询优化性能
+    const { data, error, count } = await supabase
+      .from('posts')
+      .select(`
+        *,
+        user:user_id (
+          id,
+          username,
+          display_name,
+          avatar_url,
+          is_verified
+        )
+      `, { count: 'exact' })
+      .eq('status', 'published')
+      .in('user_id', [
+        // 子查询：获取用户关注的人的ID列表
+        supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', userId)
+      ])
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) {
+      throw new DatabaseError('获取用户动态失败', error);
+    }
+    
+    return {
+      posts: data || [],
+      total: count || 0
+    };
+  }
+}
+```
+
+### 2. 实时订阅管理
+
+#### 实时数据订阅（强制实现）
+```typescript
+// src/hooks/useRealtimeSubscription.ts - 强制实时订阅Hook
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { RealtimeChannel } from '@supabase/supabase-js';
+
+interface UseRealtimeSubscriptionOptions<T> {
+  table: string;
+  filter?: string;
+  onInsert?: (payload: T) => void;
+  onUpdate?: (payload: T) => void;
+  onDelete?: (payload: { old_record: T }) => void;
+}
+
+// ✅ 强制：类型安全的实时订阅Hook
+export function useRealtimeSubscription<T = any>({
+  table,
+  filter,
+  onInsert,
+  onUpdate,
+  onDelete,
+}: UseRealtimeSubscriptionOptions<T>) {
+  const [channel, setChannel] = useState<RealtimeChannel | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  
+  useEffect(() => {
+    let channelName = `public:${table}`;
+    if (filter) {
+      channelName += `:${filter}`;
+    }
+    
+    const newChannel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: table,
+          filter: filter
+        },
+        (payload) => {
+          console.log('Realtime event:', payload);
+          
+          switch (payload.eventType) {
+            case 'INSERT':
+              onInsert?.(payload.new as T);
+              break;
+            case 'UPDATE':
+              onUpdate?.(payload.new as T);
+              break;
+            case 'DELETE':
+              onDelete?.({ old_record: payload.old as T });
+              break;
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('Subscription status:', status);
+        setIsConnected(status === 'SUBSCRIBED');
+      });
+    
+    setChannel(newChannel);
+    
+    return () => {
+      console.log('Unsubscribing from channel:', channelName);
+      newChannel.unsubscribe();
+    };
+  }, [table, filter, onInsert, onUpdate, onDelete]);
+  
+  return { channel, isConnected };
+}
+
+// ✅ 强制：使用示例
+// const { isConnected } = useRealtimeSubscription<Post>({
+//   table: 'posts',
+//   filter: 'status=eq.published',
+//   onInsert: (post) => {
+//     console.log('新帖子:', post);
+//     // 更新本地状态
+//   },
+//   onUpdate: (post) => {
+//     console.log('帖子更新:', post);
+//     // 更新本地状态
+//   }
+// });
+```
+
+---
+
+## 📋 代码审查清单
+
+### 数据库设计完成检查
+
+- [ ] **表结构**: 所有表都有UUID主键、审计字段、适当的外键约束
+- [ ] **RLS策略**: 所有表都启用了RLS并有适当的安全策略
+- [ ] **索引优化**: 外键、查询频繁字段都有相应索引
+- [ ] **类型定义**: 使用枚举类型约束状态字段
+- [ ] **审计日志**: 重要表都有审计触发器
+- [ ] **数据脱敏**: 敏感数据有脱敏处理
+
+### TypeScript集成检查
+
+- [ ] **类型安全**: 使用自动生成的数据库类型
+- [ ] **Repository模式**: 数据访问层有适当的抽象
+- [ ] **错误处理**: 数据库操作有统一的错误处理
+- [ ] **查询优化**: 复杂查询使用了适当的优化策略
+
+### 安全性检查
+
+- [ ] **认证授权**: RLS策略正确实现了权限控制
+- [ ] **数据加密**: 敏感数据使用了加密存储
+- [ ] **SQL注入**: 所有查询都使用了参数化查询
+- [ ] **审计追踪**: 重要操作都有审计记录
+
+---
+
+**适用项目**: BiuBiuStar社交平台数据库层  
+**更新频率**: Supabase版本升级时同步更新  
+**强制执行**: 所有P0级规则必须100%遵循，P1级规则建议95%以上遵循

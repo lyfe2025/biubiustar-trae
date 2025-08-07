@@ -1,0 +1,381 @@
+---
+alwaysApply: true
+---
+# Cursor 核心运行时规则
+
+> **极简高效版本** - 仅包含每次对话必需的核心规则
+> **详细说明**：请参考 `detailed-guides.mdc` 获取完整的配置指导和使用说明
+
+---
+
+## 🚀 快速启动检查
+
+### ⚡ 专用规则文件优先检查机制（强制执行）
+
+```javascript
+// **强制执行**: 任何操作前必须优先检查专用规则文件
+function MANDATORY_SPECIALIZED_RULES_CHECK() {
+  // 步骤1: 强制扫描已存在的专用规则文件
+  const existingRules = scanDirectory('.cursor/rules/');
+  const specializedFiles = existingRules.filter(file => 
+    !['common-rules.mdc', 'collaboration-standards.mdc', 
+      'project-management-practices.mdc', 'rule-file-management.mdc',
+      'project-initialization.mdc', 'detailed-guides.mdc'].includes(file)
+  );
+  
+  // 步骤2: 按优先级排序并强制应用
+  const prioritizedRules = sortByPriority(specializedFiles);
+  for (const ruleFile of prioritizedRules) {
+    FORCE_LOAD_AND_APPLY(ruleFile); // 强制加载，无条件应用
+  }
+  
+  // 步骤3: 技术栈检测与专用规则生成
+  const techStack = detectTechStack();
+  for (const tech of techStack) {
+    const expectedRuleFile = `${tech.name}-v${tech.version}-standards.mdc`;
+    if (!exists(expectedRuleFile)) {
+      IMMEDIATE_GENERATE_RULE_FILE(expectedRuleFile);
+      FORCE_LOAD_AND_APPLY(expectedRuleFile); // 生成后立即应用
+    }
+  }
+  
+  // 步骤4: 问题域专用规则检查
+  const activeProblems = analyzeCurrentContext();
+  for (const problem of activeProblems) {
+    const solutionFile = `${problem.type}-solutions.mdc`;
+    if (exists(solutionFile)) {
+      FORCE_LOAD_AND_APPLY(solutionFile);
+    }
+  }
+  
+  return SPECIALIZED_RULES_LOADED;
+}
+```
+
+### 🎯 专用规则文件执行路径（清晰优先级）
+
+```mermaid
+flowchart TD
+    A[任何AI操作] --> B{专用规则文件检查}
+    B --> C[扫描.cursor/rules/目录]
+    C --> D[识别所有专用规则文件]
+    D --> E[按优先级排序]
+    E --> F[逐个强制加载应用]
+    F --> G{技术栈规则存在?}
+    G -->|否| H[立即生成技术栈规则]
+    G -->|是| I[验证规则版本匹配]
+    H --> J[强制应用新生成规则]
+    I --> K{问题域规则存在?}
+    J --> K
+    K -->|是| L[应用问题域规则]
+    K -->|否| M[检查是否需要生成]
+    L --> N[执行主要操作]
+    M --> N
+    
+    style B fill:#ff6b6b
+    style F fill:#ff6b6b
+    style H fill:#ff6b6b
+    style J fill:#ff6b6b
+```
+
+### 状态检查（智能条件判断）
+```javascript
+// 精确条件判断逻辑 - AI请严格按此逻辑执行
+function intelligentStatusCheck() {
+  // **第0步: 强制专用规则文件检查** - 任何操作前的必要步骤
+  MANDATORY_SPECIALIZED_RULES_CHECK(); // 强制执行，无条件跳过
+  
+  // 条件1: 强制初始化场景
+  if (!exists('.cursor/project-initialized') || 
+      user_explicitly_requests_init ||
+      session_is_first_conversation) {
+    return LOAD('project-initialization.mdc');
+  }
+  
+  // 条件2: 技术栈变更检测
+  if (file_modified('package.json') || 
+      file_modified('requirements.txt') ||
+      file_modified('pom.xml') ||
+      file_modified('Cargo.toml')) {
+    return PROMPT_TECH_STACK_UPDATE();
+  }
+  
+  // 条件3: 长时间未检查
+  if (last_check_time > 24_hours) {
+    return LIGHT_STATUS_VALIDATION();
+  }
+  
+  // 条件4: 同会话继续 - 直接协作
+  if (same_session_continuation) {
+    return SKIP_ALL_CHECKS();
+  }
+  
+  // 默认: 进入协作模式
+  return PROCEED_COLLABORATION();
+}
+```
+
+---
+
+## ⚡ 核心执行规则
+
+### 1. 文件大小强制限制
+- **500行铁律**：任何文件 ≥500行 → 立即强制分离
+- **检查时机**：代码修改前必须检查行数
+- **执行策略**：超限 → 停止操作 → 强制分离
+
+### 2. 智能决策边界
+
+| 决策级别 | 操作类型 | 典型示例 | 执行方式 |
+|----------|----------|----------|----------|
+| **立即执行** | Bug修复、代码优化 | 语法错误、格式化、安全漏洞、性能优化 | 无需确认，直接执行 |
+| **需要确认** | 功能变更 | 新功能、API变更、依赖升级、配置修改 | 说明后等待用户确认 |
+| **必须审查** | 核心业务 | 业务逻辑、数据库变更、权限设置 | 详细说明+强制用户审查 |
+| **禁止自主** | 高风险操作 | 生产部署、数据删除、破坏性重构 | 绝不自主执行 |
+
+### 3. DRY 原则强制执行机制（Don't Repeat Yourself）
+
+#### 🔍 **重复检测触发** → 自动加载 `code-quality-dry-standards.mdc`
+
+| 触发条件 | 检测阈值 | 执行动作 | 专用规则应用 |
+|----------|----------|----------|-------------|
+| **代码重复** | ≥2次相同逻辑 | 立即重构 | `🛠️ DRY专用规则 → [强制应用]` |
+| **配置重复** | 多处相同配置 | 立即统一 | `🛠️ DRY专用规则 → [配置整合]` |
+| **文档重复** | ≥3处相同说明 | 单一信息源 | `🛠️ DRY专用规则 → [文档优化]` |
+| **规则重复** | 多文件相同规则 | 立即合并 | `🛠️ DRY专用规则 → [规则整合]` |
+
+```javascript
+// DRY 原则检查 - 自动触发专用规则文件
+function DRY_PRINCIPLE_CHECK(codeChange) {
+  const duplicationDetected = detectCodeDuplication(codeChange);
+  
+  if (duplicationDetected.length > 0) {
+    // 自动加载专用DRY规则文件
+    FORCE_LOAD_SPECIALIZED_RULE('code-quality-dry-standards.mdc');
+    return APPLY_DETAILED_DRY_STANDARDS(duplicationDetected);
+  }
+  
+  return DRY_COMPLIANT();
+}
+```
+
+> 💡 **详细DRY实施指南**: 检测到代码重复时自动引用 `code-quality-dry-standards.mdc` 获取完整的重构策略、合规性标准和实战示例
+
+### 4. 专用规则文件优先加载机制（强制执行路径）
+
+#### 🔥 **强制优先级** - 无条件检查和应用
+| 优先级 | 规则文件类型 | 强制执行条件 | 生成时机 | 应用方式 |
+|--------|-------------|-------------|----------|----------|
+| **P0 - 技术栈专用** | `<tech-stack>-v<version>-standards.mdc` | 检测到对应技术栈 | 立即生成（如不存在） | 强制加载，无条件应用 |
+| **P1 - 代码质量专用** | `code-quality-dry-standards.mdc` | 检测到代码重复 | 已存在，立即应用 | 强制加载，DRY标准执行 |
+| **P2 - 问题域专用** | `<problem-type>-solutions.mdc` | 存在相关问题上下文 | 问题重复出现时 | 强制加载，优先应用 |
+| **P3 - 安全合规** | `security-<type>-requirements.mdc` | 涉及安全相关操作 | 安全需求识别时 | 强制加载，严格执行 |
+| **P4 - 功能域专用** | `<domain>-<feature>-standards.mdc` | 特定功能域操作 | 功能复杂化时 | 按需加载，智能应用 |
+
+#### 📋 **条件优先级** - 智能判断加载
+| 场景类型 | 规则文件 | 精确加载条件 | 跳过条件 | 优先级 |
+|----------|----------|-------------|----------|--------|
+| **协作交互** | collaboration-standards.mdc | 需要格式化回复 OR 涉及决策边界判断 | 纯技术问题且无格式要求 | 高 |
+| **项目管理** | project-management-practices.mdc | 提及"环境"/"团队"/"部署"/"监控" | 单纯代码修改任务 | 中 |
+| **规则管理** | rule-file-management.mdc | 用户要求生成规则 OR 同问题出现≥2次 | 首次遇到的新问题 | 中 |
+| **初始化流程** | project-initialization.mdc | 无`.cursor/project-initialized` OR 用户明确要求 | 已初始化且无技术栈变更 | 最高 |
+
+```javascript
+// 强制专用规则文件优先检查函数
+function shouldLoadRuleFile(fileType, context) {
+  // **第一步: 强制检查专用规则文件** - 无条件执行
+  const specializedRules = checkSpecializedRules(context);
+  if (specializedRules.length > 0) {
+    for (const rule of specializedRules) {
+      FORCE_LOAD_AND_APPLY(rule); // 强制应用所有专用规则
+    }
+  }
+  
+  // **第二步: 检查是否需要生成新的专用规则文件**
+  const missingTechStackRules = detectMissingTechStackRules(context);
+  for (const missing of missingTechStackRules) {
+    IMMEDIATE_GENERATE_AND_APPLY(missing); // 立即生成并应用
+  }
+  
+  // **第三步: 快速跳过逻辑**（仅在专用规则检查完成后）
+  if (context.is_simple_bug_fix && !context.requires_formatting && 
+      specializedRules.length === 0) {
+    return SKIP_CONDITIONAL_RULES();
+  }
+  
+  // **第四步: 条件加载逻辑**（补充性检查）
+  switch(fileType) {
+    case 'collaboration':
+      return context.needs_reply_format || context.needs_decision_boundary;
+    case 'project-management':
+      return /环境|团队|部署|监控|质量/.test(context.user_request);
+    case 'rule-management':
+      return context.repeated_problem_count >= 2;
+    default:
+      return true; // 默认加载
+  }
+}
+
+// 专用规则文件检查辅助函数
+function checkSpecializedRules(context) {
+  const rules = [];
+  
+  // P0: 技术栈专用规则（最高优先级）
+  const techStack = detectTechStack();
+  for (const tech of techStack) {
+    const ruleFile = `${tech.name}-v${tech.version}-standards.mdc`;
+    if (exists(ruleFile)) rules.push({file: ruleFile, priority: 0});
+  }
+  
+  // P1: 问题域专用规则
+  const problemDomain = analyzeProblemDomain(context);
+  if (problemDomain) {
+    const solutionFile = `${problemDomain}-solutions.mdc`;
+    if (exists(solutionFile)) rules.push({file: solutionFile, priority: 1});
+  }
+  
+  // P2: 安全合规规则
+  if (context.involves_security) {
+    const securityRules = scanSecurityRules();
+    rules.push(...securityRules.map(file => ({file, priority: 2})));
+  }
+  
+  // 按优先级排序返回
+  return rules.sort((a, b) => a.priority - b.priority);
+}
+```
+
+### 4. 问题处理快速决策
+
+| 问题次数 | 处理策略 | 必须执行 | 记录要求 |
+|----------|----------|----------|----------|
+| **第1次** | 正常解决 | 分析根因 + 修复 | 简要记录解决方案 |
+| **第2次重复** | 标准复盘 | 深度分析 + 模式识别 | 记录到 `docs/问题解决/` |
+| **第3次失败** | 强制深度复盘 | 风险等级提升 + 专家介入 | 完整复盘报告 + 预防措施 |
+
+### 5. Git操作禁令
+**绝对禁止**：执行任何 `git` 命令（add, commit, push 等）
+**用户职责**：所有版本控制操作由用户完成
+
+---
+
+## 🎯 快速引用表
+
+### 🎯 专用规则文件优先引用路径 + 强制跟踪
+
+#### **Phase 1: 强制专用规则检查**（每次操作前必须执行）
+| 检查步骤 | 规则文件类型 | 检查方式 | 显示格式 | 强制性 |
+|----------|-------------|----------|----------|--------|
+| **1️⃣ 技术栈专用** | `<tech>-v<ver>-standards.mdc` | 自动扫描+强制应用 | `🔧 [技术栈] v[版本] → [强制应用]` | 💯 强制 |
+| **2️⃣ 代码质量DRY** | `code-quality-dry-standards.mdc` | 重复检测+强制应用 | `🛠️ DRY原则 → [重复消除]` | 💯 强制 |
+| **3️⃣ 问题域专用** | `<problem>-solutions.mdc` | 上下文匹配+优先应用 | `🛠️ [问题域] → [专用解决方案]` | 💯 强制 |
+| **4️⃣ 安全合规** | `security-<type>-requirements.mdc` | 安全检测+严格执行 | `🔒 [安全域] → [合规要求]` | 💯 强制 |
+| **5️⃣ 功能域专用** | `<domain>-<feature>-standards.mdc` | 功能检测+智能应用 | `⚙️ [功能域] → [专用标准]` | ⚡ 智能 |
+
+#### **Phase 2: 条件规则补充**（专用规则应用后的补充检查）
+| 场景 | 引用文件 | 加载时机 | 必须在回复中显示 |
+|------|----------|----------|-----------------|
+| **首次协作** | project-initialization.mdc | 检测到未初始化 | `🚀 项目初始化 → [执行阶段]` |
+| **协作交互** | collaboration-standards.mdc | 需要格式化回复时 | `🤝 协作规范 → [格式化应用]` |
+| **项目管理** | project-management-practices.mdc | 涉及环境/团队问题 | `📊 项目管理 → [具体场景]` |
+| **规则管理** | rule-file-management.mdc | 需要生成新规则时 | `⚙️ 规则管理 → [生成/修改]` |
+
+#### **自动生成机制**（缺失专用规则时的立即生成）
+| 触发条件 | 生成规则文件 | 生成时机 | 应用方式 |
+|----------|-------------|----------|----------|
+| **技术栈无对应规则** | `<tech>-v<ver>-standards.mdc` | 检测到技术栈但无规则文件 | 立即生成+强制应用 |
+| **代码重复检测** | `code-quality-dry-standards.mdc` | 检测到重复代码 | 立即引用+DRY标准应用 |
+| **重复问题≥2次** | `<problem-type>-solutions.mdc` | 同类问题反复出现 | 记录问题+生成解决方案 |
+| **新功能域复杂化** | `<domain>-standards.mdc` | 功能复杂度超过阈值 | 提示生成+用户确认 |
+
+> 💥 **强制执行要求**: 
+> 1. AI每次操作前必须执行 Phase 1 的专用规则检查
+> 2. 每次回复必须显示所有应用的专用规则文件
+> 3. 缺失的专用规则文件必须立即生成并应用
+
+### 质量标准快速判断
+
+| 环境类型 | 质量要求 | 测试标准 | 文档要求 | 技术债务 |
+|----------|----------|----------|----------|----------|
+| **生产环境** | 最高标准 | 完整测试覆盖 | 详细文档 | 禁止 |
+| **开发环境** | 平衡质量效率 | 重点功能测试 | 核心文档 | 最小化 |
+| **原型环境** | 快速验证 | 基础功能验证 | 简要说明 | 可接受 |
+
+---
+
+## 📋 核心价值观（智能决策原则）
+
+| 价值观原则 | 强制执行条件 | 可适度调整条件 | 判断逻辑 |
+|------------|-------------|---------------|----------|
+| **规则遵循 > 开发便利** | 文件≥500行 OR 违反核心规则 | 无 - 绝对不可违背 | `if (file_lines >= 500) FORCE_SPLIT()` |
+| **DRY原则 > 开发速度** | 重复代码≥2次 OR 配置重复 | 原型开发的快速验证 | `if (code_duplication) FORCE_REFACTOR()` |
+| **质量 > 速度** | 生产环境 OR 核心业务逻辑 | 原型环境的快速验证 | `if (env == 'production') MAX_QUALITY()` |
+| **安全 > 便利** | 涉及权限/数据/密钥 | 开发环境的调试便利 | `if (involves_security) SECURITY_FIRST()` |
+| **团队协作 > 个人效率** | 多人协作项目 | 个人学习项目 | `if (team_project) READABLE_CODE()` |
+
+```javascript
+// 价值观决策算法
+function applyValuePrinciple(action, context) {
+  // 铁律检查 - 无条件执行
+  if (context.file_lines >= 500) {
+    return FORCE_FILE_SPLIT();
+  }
+  
+  // DRY 原则检查 - 优先执行 → 触发专用规则文件
+  const duplicationLevel = detectCodeDuplication(action, context);
+  if (duplicationLevel.severity !== 'none') {
+    FORCE_LOAD_SPECIALIZED_RULE('code-quality-dry-standards.mdc');
+    return APPLY_DRY_SPECIALIZED_STANDARDS(duplicationLevel, context);
+  }
+  
+  // 安全优先检查
+  if (action.involves_security || action.affects_permissions) {
+    return REQUIRE_SECURITY_REVIEW();
+  }
+  
+    // 环境适应性检查  
+  if (context.environment === 'production') {
+    return APPLY_HIGHEST_STANDARDS();
+  } else if (context.environment === 'prototype') {
+    return ALLOW_TECHNICAL_DEBT();
+  }
+  
+  // 默认平衡策略
+  return BALANCED_APPROACH();
+}
+
+// DRY 原则快速检测 - 详细逻辑在专用规则文件中
+function detectCodeDuplication(action, context) {
+  // 基础重复检测 - 触发专用规则文件加载
+  if (action.involves_code_changes) {
+    const basicDuplication = quickDuplicationScan(action.code_changes);
+    return { severity: basicDuplication.detected ? 'detected' : 'none' };
+  }
+  return { severity: 'none' };
+}
+```
+
+---
+
+## 🔄 性能优化机制
+
+### 条件加载策略
+- **状态缓存**：初始化状态缓存1小时，避免重复检查
+- **按需引用**：仅在明确需要时加载专用规则文件
+- **快速跳过**：已初始化且无变更 → 直接进入协作模式
+
+### 智能触发机制
+
+| 触发类型 | 条件检查 | 执行动作 | 优先级 |
+|----------|----------|----------|--------|
+| **触发初始化** | 首次对话 | 完整初始化流程 | 最高 |
+| **触发初始化** | 用户明确要求 | 按用户需求执行 | 最高 |
+| **触发初始化** | 关键文件变更 (package.json等) | 增量更新检查 | 高 |
+| **触发初始化** | 距离上次检查>24小时 | 状态验证 | 中 |
+| **跳过检查** | `.cursor/project-initialized` 存在且有效 | 直接协作模式 | - |
+| **跳过检查** | 技术栈无变更 | 直接协作模式 | - |
+| **跳过检查** | 同一会话继续对话 | 直接协作模式 | - |
+
+---
+
+**注意**：本文件专注于运行时性能优化，详细说明和配置指导请参考对应的专用规则文件。

@@ -4,7 +4,22 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My React App</title>
+    <title>BiuBiuStar - 企业社交平台</title>
+    
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:site_name" content="BiuBiuStar" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="BiuBiuStar - 企业社交平台" />
+    <meta property="og:description" content="连接企业与用户的现代化社交平台，分享精彩内容，发现更多可能" />
+    <meta property="og:image" content="https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=modern%20purple%20gradient%20social%20platform%20logo%20with%20star%20elements%20professional%20design&image_size=square_hd" />
+    <meta property="og:url" content="https://biubiustar.com" />
+    
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@biubiustar" />
+    <meta name="twitter:title" content="BiuBiuStar - 企业社交平台" />
+    <meta name="twitter:description" content="连接企业与用户的现代化社交平台，分享精彩内容，发现更多可能" />
+    <meta name="twitter:image" content="https://trae-api-sg.mchost.guru/api/ide/v1/text_to_image?prompt=modern%20purple%20gradient%20social%20platform%20logo%20with%20star%20elements%20professional%20design&image_size=landscape_16_9" />
     <script type="module">
       if (import.meta.hot?.on) {
         import.meta.hot.on('vite:error', (error) => {
@@ -16,6 +31,10 @@
     </script>
   </head>
   <body>
+    <!-- Facebook SDK -->
+    <div id="fb-root"></div>
+    <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v18.0&appId=YOUR_APP_ID&autoLogAppEvents=1"></script>
+    
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

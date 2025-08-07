@@ -11,9 +11,7 @@ const contactFormSchema = z.object({
   email: z.string().email('请输入有效的邮箱地址').max(255, '邮箱长度不能超过255个字符'),
   company: z.string().max(200, '公司名称长度不能超过200个字符').optional(),
   phone: z.string().max(50, '电话号码长度不能超过50个字符').optional(),
-  cooperation_type: z.enum(['technical', 'business', 'investment', 'other'], {
-    errorMap: () => ({ message: '请选择有效的合作类型' })
-  }),
+  cooperation_type: z.enum(['technical', 'business', 'investment', 'other']),
   description: z.string().min(1, '详细需求描述不能为空').max(2000, '需求描述长度不能超过2000个字符')
 });
 

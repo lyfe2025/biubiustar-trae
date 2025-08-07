@@ -265,20 +265,36 @@ export default function Layout({ children }: LayoutProps) {
           {isMobileMenuOpen && (
             <div className="md:hidden py-4 border-t border-gray-200 dark:border-gray-700">
               <div className="space-y-2">
-                {navigation.map((item) => (
-                  <Link
-                    key={item.href}
-                    to={item.href}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className={`block px-3 py-2 rounded-md text-base font-medium transition-colors ${
-                      isActivePath(item.href)
-                        ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/20'
-                        : 'text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400'
-                    }`}
-                  >
-                    {item.name}
-                  </Link>
-                ))}
+                {navigation.map((item) => {
+                  if (item.isModal) {
+                    return (
+                      <button
+                        key={item.href}
+                        onClick={() => {
+                          handleContactClick();
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className="block w-full text-left px-3 py-2 rounded-md text-base font-medium transition-colors text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400"
+                      >
+                        {item.name}
+                      </button>
+                    );
+                  }
+                  return (
+                    <Link
+                      key={item.href}
+                      to={item.href}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={`block px-3 py-2 rounded-md text-base font-medium transition-colors ${
+                        isActivePath(item.href)
+                          ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/20'
+                          : 'text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400'
+                      }`}
+                    >
+                      {item.name}
+                    </Link>
+                  );
+                })}
                 
                 {/* Create Post Button for Mobile */}
                 {user && (
@@ -384,6 +400,12 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </footer>
+
+      {/* Contact Modal */}
+      <ContactModal
+        isOpen={isContactModalOpen}
+        onClose={() => setIsContactModalOpen(false)}
+      />
     </div>
   );
 }

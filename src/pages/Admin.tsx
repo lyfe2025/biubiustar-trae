@@ -591,7 +591,7 @@ const Admin: React.FC = () => {
     { id: 'events', label: t('admin.events'), icon: Calendar },
     { id: 'contact', label: t('admin.contact'), icon: Mail },
     { id: 'settings', label: t('admin.settings'), icon: Settings },
-  ];}]}
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
